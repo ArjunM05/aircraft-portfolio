@@ -1,0 +1,130 @@
+:root {
+	--bg: #0a2848;
+	--bg2: #071c36;
+	--grid: #123e6b;
+	--line: #d9ecff;
+	--cyan: #5fd4ff;
+	--amber: #ffb454;
+	--dim: #9dbbd8;
+	--panel: rgba(7, 28, 54, 0.9);
+	--paper: #f4efe3;
+	--ink: #12263f;
+	--sans: 'Barlow Semi Condensed', 'Arial Narrow', Arial, sans-serif;
+	--mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+
+	color-scheme: dark;
+	box-sizing: border-box;
+	padding-top: env(safe-area-inset-top, 0px);
+	padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html {
+	scroll-padding-top: env(safe-area-inset-top, 0px);
+}
+
+*,
+*::before,
+*::after {
+	box-sizing: inherit;
+}
+
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--line);
+	font: 16px/1.5 var(--sans);
+}
+
+/* ---------- shared utilities (used across components) ---------- */
+/* ---------- shared utilities (used across components) ---------- */
+.part-label {
+	font: 12px var(--mono);
+	color: var(--cyan);
+	margin-bottom: 4px;
+}
+
+.part-explanation {
+	font: 12px/1.5 var(--mono);
+	color: var(--amber);
+	margin: 10px 0 14px;
+	padding-left: 10px;
+	border-left: 2px solid var(--amber);
+}
+
+.meta-text {
+	font: 12px var(--mono);
+	color: var(--dim);
+	margin: 0;
+}
+
+.tag-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 6px 0 10px;
+	padding: 0;
+	list-style: none;
+}
+.tag-list li {
+	border: 1px solid var(--cyan);
+	padding: 1px 8px;
+	font: 12px var(--mono);
+}
+
+.action-button {
+	display: inline-block;
+	margin-top: 12px;
+	background: none;
+	border: 1px solid var(--amber);
+	color: var(--amber);
+	padding: 8px 16px;
+	font: 600 16px var(--sans);
+	cursor: pointer;
+	text-decoration: none;
+}
+.action-button:hover,
+.action-button:focus-visible {
+	background: var(--amber);
+	color: var(--bg);
+	outline: none;
+}
+
+.chip-link {
+	display: inline-block;
+	border: 1px solid var(--cyan);
+	color: var(--cyan);
+	padding: 3px 10px;
+	margin: 2px 6px 2px 0;
+	font: 12px var(--mono);
+	text-decoration: none;
+	background: none;
+	cursor: pointer;
+}
+.chip-link:hover,
+.chip-link:focus-visible {
+	background: var(--cyan);
+	color: var(--bg);
+	outline: none;
+}
+.chip-link--disabled {
+	opacity: 0.45;
+	cursor: default;
+	border-style: dashed;
+	pointer-events: none;
+}
+
+.sample-badge {
+	font: 10px var(--mono);
+	border: 1px solid var(--amber);
+	color: var(--amber);
+	padding: 0 6px;
+	margin-left: 8px;
+	white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}
