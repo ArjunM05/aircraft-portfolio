@@ -336,7 +336,7 @@ export const mockShipments: Record<string, MockShipment> = {
  * Sections, in menu order
  * ===================================================================== */
 
-export const sections: Section[] = [
+const allSections: Section[] = [
 	{
 		kind: 'intro',
 		id: 'intro',
@@ -926,6 +926,16 @@ export const sections: Section[] = [
 	}
 ];
 
+/**
+ * Sections listed here are left out of the site: menu, scrolling, plain view and links.
+ * Their data above is still type-checked. Remove an id from this list to publish it again.
+ */
+const hiddenSectionIds: SectionId[] = ['freelance', 'incident-report'];
+
+export const sections: Section[] = allSections.filter(
+	(section) => !hiddenSectionIds.includes(section.id)
+);
+
 /* =====================================================================
  * Helpers
  * ===================================================================== */
@@ -933,4 +943,12 @@ export const sections: Section[] = [
 /** Position of a section in the menu, or -1 if the id is unknown. */
 export function getSectionIndex(sectionId: SectionId): number {
 	return sections.findIndex((section) => section.id === sectionId);
+}
+
+/** Turns a list of disciplines into links, for the "Flown with" chips. */
+export function disciplinesToLinks(disciplines: Discipline[]): SectionLink[] {
+	return disciplines.map((discipline) => ({
+		sectionId: discipline,
+		label: disciplineLabels[discipline]
+	}));
 }

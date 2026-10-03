@@ -11,6 +11,7 @@
 	--ink: #12263f;
 	--sans: 'Barlow Semi Condensed', 'Arial Narrow', Arial, sans-serif;
 	--mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+	--header-height: 52px;
 
 	color-scheme: dark;
 	box-sizing: border-box;
