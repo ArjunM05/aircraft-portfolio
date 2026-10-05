@@ -21,8 +21,8 @@
 	/** The drawing is 400 x 640 units, nose pointing up, centred on x = 200. */
 	const VIEWBOX_WIDTH = 400;
 	const VIEWBOX_HEIGHT = 640;
-	const AIRCRAFT_CENTER_X = VIEWBOX_WIDTH / 2;
-	const VIEWBOX_CENTER_Y = VIEWBOX_HEIGHT / 2;
+	// const AIRCRAFT_CENTER_X = VIEWBOX_WIDTH / 2;
+	// const VIEWBOX_CENTER_Y = VIEWBOX_HEIGHT / 2;
 
 	/** Camera easing: share of the remaining distance covered each frame. */
 	const CAMERA_SMOOTHING_PER_FRAME = 0.14;
@@ -217,6 +217,23 @@
 			]
 		}
 	];
+
+	/** Where each part's pulsing marker sits, in the 400 x 640 drawing. */
+	const partMarkerPositions: Record<AircraftPartId, { x: number; y: number }> = {
+		cockpit: { x: 200, y: 24 },
+		fuselage: { x: 200, y: 300 },
+		'avionics-bay': { x: 200, y: 111 },
+		'passenger-cabin': { x: 200, y: 198 },
+		engines: { x: 290, y: 284 },
+		wings: { x: 245, y: 255 },
+		flaps: { x: 272, y: 318 },
+		winglets: { x: 394, y: 340 },
+		ailerons: { x: 352, y: 347 },
+		'cargo-hold': { x: 200, y: 411 },
+		'black-box': { x: 200, y: 477 },
+		elevators: { x: 260, y: 530 },
+		rudder: { x: 200, y: 541 }
+	};
 </script>
 
 <script lang="ts">
@@ -229,22 +246,48 @@
 		camera: CameraTarget;
 		/** Called when a visitor clicks a part, or presses Enter/Space on it. */
 		onSelectPart: (part: AircraftPartId) => void;
-		/** Fill the whole frame and crop the edges (good for the short phone layout). */
-		cropToFit?: boolean;
+		/** 'horizontal' turns the aircraft sideways (nose on the left), filling the short, wide strip on phones. */
+		orientation?: 'vertical' | 'horizontal';
 		/** Parts that have a section behind them. The others are drawn but cannot be clicked. */
 		interactiveParts: AircraftPartId[];
+		/** Short caption per part, shown in the hover label (for example "Skills"). */
+		partCaptions: Partial<Record<AircraftPartId, string>>;
 	}
 
-	let { activePart, camera, onSelectPart, interactiveParts, cropToFit = false }: Props = $props();
+	let {
+		activePart,
+		camera,
+		onSelectPart,
+		interactiveParts,
+		partCaptions,
+		orientation = 'vertical'
+	}: Props = $props();
 
 	// Start exactly where the camera is told to be, so the first paint is already correct.
 	// untrack: we intentionally capture only the initial value here; the effect below follows changes.
 	let displayedCamera = $state<CameraTarget>(untrack(() => ({ ...camera })));
 
+	let hoveredPart = $state<AircraftPartId | null>(null);
+
+	const hoverCaption = $derived.by(() => {
+		if (!hoveredPart) return '';
+		const partName = aircraftParts.find((part) => part.id === hoveredPart)?.displayName;
+		return `${partName}: ${partCaptions[hoveredPart] ?? ''}`;
+	});
+
+	/** Keeps markers about the same size on screen whatever the zoom is. */
+	const markerRadius = $derived(5 / displayedCamera.zoom);
+
+	const isHorizontal = $derived(orientation === 'horizontal');
+	const viewBoxWidth = $derived(isHorizontal ? VIEWBOX_HEIGHT : VIEWBOX_WIDTH);
+	const viewBoxHeight = $derived(isHorizontal ? VIEWBOX_WIDTH : VIEWBOX_HEIGHT);
+
+	// Move the view to the camera's centre, turn the aircraft if needed, then zoom.
 	const cameraTransform = $derived(
-		`translate(${AIRCRAFT_CENTER_X - displayedCamera.centerX * displayedCamera.zoom} ` +
-			`${VIEWBOX_CENTER_Y - displayedCamera.centerY * displayedCamera.zoom}) ` +
-			`scale(${displayedCamera.zoom})`
+		`translate(${viewBoxWidth / 2} ${viewBoxHeight / 2}) ` +
+			(isHorizontal ? 'rotate(-90) ' : '') +
+			`scale(${displayedCamera.zoom}) ` +
+			`translate(${-displayedCamera.centerX} ${-displayedCamera.centerY})`
 	);
 
 	// Ease the displayed camera towards the requested one, one animation frame at a time.
@@ -289,60 +332,79 @@
 	}
 </script>
 
-<svg
-	class="blueprint"
-	viewBox="0 0 {VIEWBOX_WIDTH} {VIEWBOX_HEIGHT}"
-	preserveAspectRatio={cropToFit ? 'xMidYMid slice' : 'xMidYMid meet'}
-	role="group"
-	aria-label="Top-down blueprint of an Airbus A350-900. Each part opens a section."
->
-	{#snippet shapeElement(shape: PartShape)}
-		{#if shape.element === 'path'}
-			<path class="shape shape--{shape.role}" {...shape.attributes} />
-		{:else if shape.element === 'rect'}
-			<rect class="shape shape--{shape.role}" {...shape.attributes} />
-		{:else}
-			<circle class="shape shape--{shape.role}" {...shape.attributes} />
-		{/if}
-	{/snippet}
-
-	{#snippet partShapes(part: AircraftPartDefinition)}
-		{#each part.shapes as shape}
-			{@render shapeElement(shape)}
-			{#if shape.mirrored}
-				<g transform="translate({VIEWBOX_WIDTH} 0) scale(-1 1)">
-					{@render shapeElement(shape)}
-				</g>
-			{/if}
-		{/each}
-	{/snippet}
-
-	<g transform={cameraTransform}>
-		<path class="center-line" d="M200 0V640" />
-
-		{#each aircraftParts as part (part.id)}
-			{#if interactiveParts.includes(part.id)}
-				<g
-					class="aircraft-part"
-					class:active={part.id === activePart}
-					role="button"
-					tabindex="0"
-					aria-label={part.displayName}
-					aria-pressed={part.id === activePart}
-					onclick={() => onSelectPart(part.id)}
-					onkeydown={(event) => handlePartKeydown(event, part.id)}
-				>
-					{@render partShapes(part)}
-				</g>
+<div class="blueprint-frame">
+	<svg
+		class="blueprint"
+		viewBox="0 0 {viewBoxWidth} {viewBoxHeight}"
+		preserveAspectRatio="xMidYMid meet"
+		role="group"
+		aria-label="Top-down blueprint of an Airbus A350-900. Each part opens a section."
+	>
+		{#snippet shapeElement(shape: PartShape)}
+			{#if shape.element === 'path'}
+				<path class="shape shape--{shape.role}" {...shape.attributes} />
+			{:else if shape.element === 'rect'}
+				<rect class="shape shape--{shape.role}" {...shape.attributes} />
 			{:else}
-				<!-- Drawn so the aircraft keeps its full shape, but nothing happens when it is clicked. -->
-				<g class="aircraft-part inert" aria-hidden="true">
-					{@render partShapes(part)}
-				</g>
+				<circle class="shape shape--{shape.role}" {...shape.attributes} />
 			{/if}
-		{/each}
-	</g>
-</svg>
+		{/snippet}
+
+		{#snippet partShapes(part: AircraftPartDefinition)}
+			{#each part.shapes as shape}
+				{@render shapeElement(shape)}
+				{#if shape.mirrored}
+					<g transform="translate({VIEWBOX_WIDTH} 0) scale(-1 1)">
+						{@render shapeElement(shape)}
+					</g>
+				{/if}
+			{/each}
+		{/snippet}
+
+		<g transform={cameraTransform}>
+			<path class="center-line" d="M200 0V640" />
+
+			{#each aircraftParts as part (part.id)}
+				{#if interactiveParts.includes(part.id)}
+					<g
+						class="aircraft-part"
+						class:active={part.id === activePart}
+						role="button"
+						tabindex="0"
+						aria-label={part.displayName}
+						aria-pressed={part.id === activePart}
+						onclick={() => onSelectPart(part.id)}
+						onkeydown={(event) => handlePartKeydown(event, part.id)}
+						onpointerenter={() => (hoveredPart = part.id)}
+						onpointerleave={() => (hoveredPart = null)}
+						onfocus={() => (hoveredPart = part.id)}
+						onblur={() => (hoveredPart = null)}
+					>
+						{@render partShapes(part)}
+					</g>
+				{:else}
+					<!-- Drawn so the aircraft keeps its full shape, but nothing happens when it is clicked. -->
+					<g class="aircraft-part inert" aria-hidden="true">
+						{@render partShapes(part)}
+					</g>
+				{/if}
+			{/each}
+
+			{#each aircraftParts as part (part.id)}
+				{#if interactiveParts.includes(part.id) && part.id !== activePart}
+					{@const marker = partMarkerPositions[part.id]}
+					<g class="hotspot" transform="translate({marker.x} {marker.y})" aria-hidden="true">
+						<circle class="hotspot-pulse" r={markerRadius * 2.2} />
+						<circle class="hotspot-dot" r={markerRadius} />
+					</g>
+				{/if}
+			{/each}
+		</g>
+	</svg>
+	{#if hoverCaption}
+		<p class="part-caption" aria-hidden="true">{hoverCaption}</p>
+	{/if}
+</div>
 
 <style>
 	.blueprint {
@@ -407,5 +469,63 @@
 	.shape--hit-area {
 		fill: transparent;
 		stroke: none;
+	}
+
+	.blueprint-frame {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		min-height: 0;
+	}
+
+	.part-caption {
+		position: absolute;
+		bottom: 14px;
+		left: 50%;
+		transform: translateX(-50%);
+		margin: 0;
+		padding: 4px 12px;
+		background: var(--panel);
+		border: 1px solid var(--amber);
+		color: var(--amber);
+		font: 12px var(--mono);
+		white-space: nowrap;
+		pointer-events: none;
+	}
+
+	.hotspot {
+		pointer-events: none;
+	}
+
+	.hotspot-dot {
+		fill: var(--amber);
+	}
+
+	.hotspot-pulse {
+		fill: none;
+		stroke: var(--amber);
+		stroke-width: 1.5;
+		vector-effect: non-scaling-stroke;
+		transform-box: fill-box;
+		transform-origin: center;
+		animation: hotspot-pulse 2s ease-out infinite;
+	}
+
+	@keyframes hotspot-pulse {
+		from {
+			opacity: 0.9;
+			transform: scale(0.4);
+		}
+		to {
+			opacity: 0;
+			transform: scale(1.4);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.hotspot-pulse {
+			animation: none;
+			opacity: 0.5;
+		}
 	}
 </style>

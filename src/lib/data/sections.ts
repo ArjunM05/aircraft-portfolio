@@ -41,6 +41,7 @@ export type Discipline = Extract<SectionId, 'frontend' | 'backend' | 'ai-ml'>;
 export const disciplineLabels: Record<Discipline, string> = {
 	frontend: 'Frontend',
 	backend: 'Backend',
+
 	'ai-ml': 'AI / ML'
 };
 
@@ -77,12 +78,12 @@ export interface WorkEntry {
 	startsOpen?: boolean;
 }
 
-/** One project or freelance engagement. Shown by ProjectCard.svelte. */
+/** One project, system, engagement or study. Shown by ProjectCard.svelte. */
 export interface CaseStudy {
 	title: string;
 	subtitle: string;
-	facts: LabelledText[]; // Problem / Approach / Result, or Client / Scope / Outcome
-	flowSteps: string[]; // small architecture diagram; empty array hides it
+	facts: LabelledText[]; // Problem / Approach / Result, Data / Model / Result, and so on
+	flowSteps: string[]; // small flow diagram; empty array hides it
 	technologies: string[];
 	disciplines: Discipline[];
 	isSample: boolean;
@@ -90,19 +91,18 @@ export interface CaseStudy {
 	liveDemoUrl?: string; // when missing, a disabled "Live demo soon" chip is shown
 	relatedSection?: SectionLink;
 	startsOpen?: boolean;
-}
 
-/** An accordion topic inside the Frontend and AI/ML sections. */
-export interface DisciplineTopic {
-	title: string;
-	subtitle: string;
-	description?: string;
-	bulletPoints?: string[];
-	flowSteps?: string[];
+	// Optional extras: a card only shows the ones it has.
+	/** Before/after bars. Leave out to hide the Telemetry block. */
+	telemetryBars?: TelemetryBar[];
+	/** Clickable system diagram. */
+	architectureNodes?: ArchitectureNode[];
+	/** One request, hop by hop. */
+	requestHops?: RequestHop[];
+	/** Shows the "Try the API" mock shipment tracker. */
+	hasApiPlayground?: boolean;
+	/** Shows the simulated live shipment board. */
 	showsFlightBoard?: boolean;
-	disciplines: Discipline[];
-	isSample?: boolean;
-	startsOpen?: boolean;
 }
 
 /* ---------- Backend section pieces ---------- */
@@ -148,6 +148,10 @@ export interface IncidentReport {
 	contributingFactors: string;
 	correctiveActions: string[];
 	outcome: string;
+	isSample: boolean;
+	startsOpen?: boolean;
+	/** Optional before/after bars for the incident. */
+	telemetryBars?: TelemetryBar[];
 }
 
 /* =====================================================================
@@ -190,15 +194,14 @@ export interface FrontendSection extends SectionBase {
 	kind: 'frontend';
 	technologies: string[];
 	usedIn: SectionLink[];
-	topics: DisciplineTopic[];
+	projects: CaseStudy[];
+	principles: string[];
 }
 
 export interface BackendSection extends SectionBase {
 	kind: 'backend';
 	usedIn: SectionLink[];
-	architectureNodes: ArchitectureNode[];
-	requestHops: RequestHop[];
-	telemetryBars: TelemetryBar[];
+	projects: CaseStudy[];
 }
 
 export interface AiMlSection extends SectionBase {
@@ -206,7 +209,12 @@ export interface AiMlSection extends SectionBase {
 	technologies: string[];
 	usedIn: SectionLink[];
 	gauges: GaugeReading[];
-	topics: DisciplineTopic[];
+	projects: CaseStudy[];
+}
+
+export interface IncidentReportSection extends SectionBase {
+	kind: 'incident-report';
+	reports: IncidentReport[];
 }
 
 export interface SkillsSection extends SectionBase {
@@ -218,11 +226,6 @@ export interface ProjectsSection extends SectionBase {
 	kind: 'projects';
 	projects: CaseStudy[];
 	githubUrl: string;
-}
-
-export interface IncidentReportSection extends SectionBase {
-	kind: 'incident-report';
-	report: IncidentReport;
 }
 
 export interface CertificationsSection extends SectionBase {
@@ -271,6 +274,20 @@ export type Section =
  * ===================================================================== */
 
 const githubUrl = 'https://github.com/ArjunM05';
+
+const asdTelemetryBars: TelemetryBar[] = [
+	{ label: 'Detection accuracy', barPercent: 98, displayValue: '98%' }
+];
+
+// +18% F1 means the baseline is about 85% as long as the fused result.
+const sentimentTelemetryBars: TelemetryBar[] = [
+	{ label: 'F1-score, single-modality baseline', barPercent: 85, displayValue: 'baseline' },
+	{ label: 'F1-score with multimodal fusion (+18%)', barPercent: 100, displayValue: '+18%' }
+];
+
+const veggieVisionTelemetryBars: TelemetryBar[] = [
+	{ label: 'Real-time detection accuracy', barPercent: 91, displayValue: '91%' }
+];
 
 export const profile = {
 	name: 'Arjun M',
@@ -346,7 +363,7 @@ const allSections: Section[] = [
 		aircraftPartName: 'Cockpit',
 		partExplanation:
 			'The cockpit is where the crew flies the aircraft from, and where every flight begins. Meet the pilot of this one.',
-		camera: { centerX: 200, centerY: 50, zoom: 3 },
+		camera: { centerX: 200, centerY: 306, zoom: 1 },
 		hasSampleContent: false,
 		jobTitle: profile.jobTitle,
 		tagline: profile.tagline,
@@ -509,42 +526,71 @@ const allSections: Section[] = [
 			'The passenger cabin is everything passengers see and touch. Frontend is the same: the interface people actually experience.',
 		camera: { centerX: 200, centerY: 198, zoom: 2.6 },
 		hasSampleContent: true,
-		technologies: ['Angular', 'TypeScript', 'React', 'Vite', 'JavaScript', 'HTML', 'CSS'],
+		technologies: ['Angular', 'TypeScript', 'React', 'Vite', 'Svelte', 'JavaScript', 'HTML', 'CSS'],
 		usedIn: [
 			{ sectionId: 'experience', label: 'LogiTrans' },
 			{ sectionId: 'internships', label: 'Annam.AI' },
 			{ sectionId: 'projects', label: 'Shipment platform' }
 		],
-		topics: [
+		projects: [
 			{
 				title: 'Real-time shipment dashboard',
 				subtitle: 'Angular + TypeScript | LogiTrans',
-				description:
-					'Dynamic modules that keep shipment status in sync with backend services, so operators see changes without refreshing.',
-				showsFlightBoard: true,
+				facts: [
+					{
+						label: 'Scope',
+						text: 'Dynamic modules that keep shipment status in sync with backend services.'
+					},
+					{ label: 'Result', text: 'Operators see changes without refreshing.' }
+				],
+				flowSteps: [],
+				technologies: ['Angular', 'TypeScript'],
 				disciplines: ['backend'],
+				isSample: false,
+				showsFlightBoard: true,
 				startsOpen: true
 			},
 			{
-				title: 'Inference front end',
+				title: 'Pest-detection interface',
 				subtitle: 'React + Vite | Annam.AI',
-				description:
-					'A React and Vite interface connected to ML inference APIs, tuned for minimal latency during real-time pest-detection evaluations.',
+				facts: [
+					{ label: 'Scope', text: 'A React and Vite interface connected to ML inference APIs.' },
+					{ label: 'Result', text: 'Minimal latency during real-time pest-detection evaluations.' }
+				],
 				flowSteps: ['React + Vite UI', 'Flask API', 'YOLOv11 model'],
-				disciplines: ['backend', 'ai-ml']
+				technologies: ['React', 'Vite', 'JavaScript'],
+				disciplines: ['backend', 'ai-ml'],
+				isSample: false
 			},
 			{
-				title: 'How I build interfaces',
-				subtitle: 'Working principles',
-				bulletPoints: [
-					'Typed API clients, so the UI and the API cannot quietly drift apart.',
-					'Small reusable components with clear inputs and outputs.',
-					'Responsive and keyboard-accessible by default.',
-					'Loading, empty and error states designed up front.'
+				title: 'This portfolio',
+				subtitle: 'Svelte + SvelteKit | personal project',
+				facts: [
+					{
+						label: 'Problem',
+						text: 'Show backend, frontend and AI/ML work without a wall of text.'
+					},
+					{
+						label: 'Approach',
+						text: 'Typed content data, Svelte components, and an SVG blueprint with an eased camera.'
+					},
+					{
+						label: 'Result',
+						text: 'A static site with a plain-view fallback and a contact form that needs no server.'
+					}
 				],
+				flowSteps: ['Typed content data', 'Svelte components', 'SVG blueprint', 'Static site'],
+				technologies: ['Svelte', 'SvelteKit', 'TypeScript', 'SVG', 'CSS'],
 				disciplines: [],
-				isSample: true
+				isSample: false,
+				sourceCodeUrl: githubUrl
 			}
+		],
+		principles: [
+			'Typed API clients, so the UI and the API cannot quietly drift apart.',
+			'Small reusable components with clear inputs and outputs.',
+			'Responsive and keyboard-accessible by default.',
+			'Loading, empty and error states designed up front.'
 		]
 	},
 	{
@@ -563,61 +609,140 @@ const allSections: Section[] = [
 			{ sectionId: 'internships', label: 'Annam.AI, Vividobots' },
 			{ sectionId: 'projects', label: 'Shipment platform, VeggieVision' }
 		],
-		architectureNodes: [
+		projects: [
 			{
-				id: 'angular-ui',
-				label: 'Angular UI',
-				lane: 'request-path',
-				explanation:
-					'Angular and TypeScript client. Keeps shipment status in sync with the backend and shows live tracking updates.'
+				title: 'Shipment tracking API',
+				subtitle: 'ASP.NET MVC + PostgreSQL | LogiTrans',
+				facts: [
+					{
+						label: 'Scope',
+						text: 'REST APIs that let operators and the Angular front end track shipments.'
+					},
+					{
+						label: 'Design',
+						text: 'Controllers validate every input, a service layer holds the business rules, and PostgreSQL queries were tuned from query plans.'
+					},
+					{
+						label: 'Result',
+						text: '40% less manual tracking time and 25% better data load efficiency.'
+					}
+				],
+				flowSteps: [],
+				technologies: ['C#', 'ASP.NET MVC', 'PostgreSQL', 'REST'],
+				disciplines: ['frontend'],
+				isSample: true,
+				startsOpen: true,
+				architectureNodes: [
+					{
+						id: 'angular-ui',
+						label: 'Angular UI',
+						lane: 'request-path',
+						explanation:
+							'Angular and TypeScript client. Keeps shipment status in sync with the backend and shows live tracking updates.'
+					},
+					{
+						id: 'rest-api',
+						label: 'REST API',
+						lane: 'request-path',
+						explanation:
+							'ASP.NET MVC REST controllers. Acts like fly-by-wire: every input is validated before it can reach the system, and errors come back in one consistent shape.'
+					},
+					{
+						id: 'service-layer',
+						label: 'Service layer',
+						lane: 'request-path',
+						explanation:
+							'Service layer holding the shipment business rules, such as valid status transitions and ETA updates.'
+					},
+					{
+						id: 'postgresql',
+						label: 'PostgreSQL',
+						lane: 'request-path',
+						explanation:
+							'PostgreSQL. Indexes chosen from query plans on high-volume shipment tables, which improved data load efficiency by 25%.'
+					},
+					{
+						id: 'authentication',
+						label: 'Auth',
+						lane: 'supporting',
+						explanation: 'Authentication and role checks applied before any controller runs.'
+					},
+					{
+						id: 'logging',
+						label: 'Logging',
+						lane: 'supporting',
+						explanation:
+							'Structured logs with a correlation ID per request, so one tracking call can be followed end to end.'
+					}
+				],
+				requestHops: [
+					{ name: 'API middleware', durationMs: 3 },
+					{ name: 'Controller + validation', durationMs: 5 },
+					{ name: 'Service layer', durationMs: 9 },
+					{ name: 'PostgreSQL query', durationMs: 24 },
+					{ name: 'Serialize + respond', durationMs: 4 }
+				],
+				hasApiPlayground: true
 			},
 			{
-				id: 'rest-api',
-				label: 'REST API',
-				lane: 'request-path',
-				explanation:
-					'ASP.NET MVC REST controllers. Acts like fly-by-wire: every input is validated before it can reach the system, and errors come back in one consistent shape.'
+				title: 'Pest-detection inference API',
+				subtitle: 'Flask + Supabase | Annam.AI',
+				facts: [
+					{
+						label: 'Scope',
+						text: 'Backend REST endpoints for high-throughput image processing with YOLOv11.'
+					},
+					{
+						label: 'Design',
+						text: 'A Flask service sits between the React front end and the model, with Supabase behind it.'
+					},
+					{ label: 'Result', text: 'Minimal latency during real-time evaluations.' }
+				],
+				flowSteps: ['React + Vite UI', 'Flask REST API', 'YOLOv11 inference', 'Supabase'],
+				technologies: ['Python', 'Flask', 'Supabase', 'YOLOv11'],
+				disciplines: ['frontend', 'ai-ml'],
+				isSample: false
 			},
 			{
-				id: 'service-layer',
-				label: 'Service layer',
-				lane: 'request-path',
-				explanation:
-					'Service layer holding the shipment business rules, such as valid status transitions and ETA updates.'
+				title: 'VeggieVision prediction API',
+				subtitle: 'Python + YOLOv8 | personal project',
+				facts: [
+					{
+						label: 'Scope',
+						text: 'A backend API that serves custom YOLOv8 predictions to an Android app.'
+					},
+					{
+						label: 'Result',
+						text: '91% accuracy for real-time object detection and weight estimation.'
+					}
+				],
+				flowSteps: ['Android app', 'REST API', 'YOLOv8', 'Weight estimate'],
+				technologies: ['Python', 'YOLOv8', 'Android'],
+				disciplines: ['ai-ml'],
+				isSample: false,
+				sourceCodeUrl: githubUrl,
+				telemetryBars: veggieVisionTelemetryBars
 			},
 			{
-				id: 'postgresql',
-				label: 'PostgreSQL',
-				lane: 'request-path',
-				explanation:
-					'PostgreSQL. Indexes chosen from query plans on high-volume shipment tables, which improved data load efficiency by 25%.'
-			},
-			{
-				id: 'authentication',
-				label: 'Auth',
-				lane: 'supporting',
-				explanation: 'Authentication and role checks applied before any controller runs.'
-			},
-			{
-				id: 'logging',
-				label: 'Logging',
-				lane: 'supporting',
-				explanation:
-					'Structured logs with a correlation ID per request, so one tracking call can be followed end to end.'
+				title: 'Backend microservices',
+				subtitle: 'Django + Flask | Vividobots',
+				facts: [
+					{ label: 'Scope', text: 'Scalable backend microservices built with Django and Flask.' },
+					{
+						label: 'Result',
+						text: 'A HAAR cascade AI model integrated to automate painting tasks.'
+					}
+				],
+				flowSteps: [
+					'Client',
+					'Django / Flask services',
+					'HAAR cascade model',
+					'Painting automation'
+				],
+				technologies: ['Python', 'Django', 'Flask'],
+				disciplines: ['ai-ml'],
+				isSample: false
 			}
-		],
-		requestHops: [
-			{ name: 'API middleware', durationMs: 3 },
-			{ name: 'Controller + validation', durationMs: 5 },
-			{ name: 'Service layer', durationMs: 9 },
-			{ name: 'PostgreSQL query', durationMs: 24 },
-			{ name: 'Serialize + respond', durationMs: 4 }
-		],
-		telemetryBars: [
-			{ label: 'Shipment list query, before', barPercent: 100, displayValue: '820 ms' },
-			{ label: 'After indexing and query rewrite (-25%)', barPercent: 75, displayValue: '615 ms' },
-			{ label: 'Manual tracking time, before', barPercent: 100, displayValue: '100%' },
-			{ label: 'With tracking APIs (-40%)', barPercent: 60, displayValue: '60%' }
 		]
 	},
 	{
@@ -652,47 +777,113 @@ const allSections: Section[] = [
 			{ percent: 18, displayValue: '+18%', label: 'F1 from multimodal fusion' },
 			{ percent: 91, displayValue: '91%', label: 'VeggieVision accuracy' }
 		],
-		topics: [
+		projects: [
 			{
 				title: 'From model to production',
 				subtitle: 'Training to client, end to end',
-				description:
-					'A model is only useful when something can call it. This is where all three disciplines meet: the model is AI/ML, the API is backend and the client is frontend.',
+				facts: [
+					{
+						label: 'Idea',
+						text: 'A model is only useful when something can call it. The model is AI/ML, the API is backend and the client is frontend.'
+					}
+				],
 				flowSteps: [
 					'Train (PyTorch / YOLO)',
 					'Model artifact',
 					'Flask inference API',
 					'React or Android client'
 				],
+				technologies: [],
 				disciplines: ['backend', 'frontend'],
+				isSample: false,
 				startsOpen: true
 			},
 			{
-				title: 'Computer vision',
-				subtitle: 'YOLOv11, YOLOv8, HAAR cascades',
-				bulletPoints: [
-					'YOLOv11 powers real-time pest detection at Annam.AI.',
-					'YOLOv8 drives detection and weight estimation in VeggieVision.',
-					'A HAAR cascade model automated painting tasks at Vividobots.'
+				title: 'Autism Spectrum Disorder Detection',
+				subtitle: 'Attention networks | 98% accuracy',
+				facts: [
+					{ label: 'Data', text: 'Patient MRI scans.' },
+					{
+						label: 'Model',
+						text: 'Custom attention networks extract features, and a random forest ensemble makes the prediction.'
+					},
+					{ label: 'Result', text: '98% detection accuracy.' }
 				],
-				disciplines: ['backend']
+				flowSteps: ['MRI scans', 'Attention network', 'Random forest', 'Prediction'],
+				technologies: ['Python', 'PyTorch', 'Random Forest', 'Deep Learning'],
+				disciplines: [],
+				isSample: false,
+				sourceCodeUrl: githubUrl,
+				telemetryBars: asdTelemetryBars
 			},
 			{
-				title: 'Deep learning on complex data',
-				subtitle: 'Attention networks, RNN, LSTM, CNN',
-				bulletPoints: [
-					'Attention networks extract features from MRI scans for autism detection, reaching 98% accuracy.',
-					'Text, audio and video fused in one pipeline, lifting F1-score by 18%.'
+				title: 'Multimodal Sentiment Analysis',
+				subtitle: 'RNN, LSTM, CNN | +18% F1-score',
+				facts: [
+					{
+						label: 'Data',
+						text: 'Text, audio and video inputs synchronized for real-time model inference.'
+					},
+					{ label: 'Model', text: 'RNN, LSTM and CNN models combined with feature fusion.' },
+					{ label: 'Result', text: 'F1-score up 18% over single-modality models.' }
 				],
-				disciplines: []
+				flowSteps: ['Text (LSTM)', 'Audio (RNN)', 'Video (CNN)', 'Feature fusion', 'Sentiment'],
+				technologies: ['Python', 'RNN', 'LSTM', 'CNN'],
+				disciplines: [],
+				isSample: false,
+				sourceCodeUrl: githubUrl,
+				telemetryBars: sentimentTelemetryBars
+			},
+			{
+				title: 'Pest detection with YOLOv11',
+				subtitle: 'Computer vision | Annam.AI',
+				facts: [
+					{ label: 'Data', text: 'Images submitted through the web application.' },
+					{ label: 'Model', text: 'YOLOv11 for real-time detection.' },
+					{ label: 'Serving', text: 'Flask REST endpoints consumed by a React front end.' }
+				],
+				flowSteps: ['Image upload', 'YOLOv11', 'Detections', 'React UI'],
+				technologies: ['Python', 'YOLOv11', 'Flask', 'React'],
+				disciplines: ['backend', 'frontend'],
+				isSample: false
+			},
+			{
+				title: 'VeggieVision detection',
+				subtitle: 'YOLOv8 | personal project',
+				facts: [
+					{ label: 'Data', text: 'Produce photos from an Android app.' },
+					{
+						label: 'Model',
+						text: 'A custom YOLOv8 model for object detection and weight estimation.'
+					},
+					{ label: 'Result', text: '91% accuracy in real time.' }
+				],
+				flowSteps: ['Photo', 'YOLOv8', 'Weight estimate'],
+				technologies: ['Python', 'YOLOv8', 'Android'],
+				disciplines: ['backend'],
+				isSample: false,
+				sourceCodeUrl: githubUrl,
+				telemetryBars: veggieVisionTelemetryBars
 			},
 			{
 				title: 'Data prep for generative AI',
-				subtitle: 'TVS Credit Services',
-				bulletPoints: [
-					'Python scripts parse, extract and chunk unstructured enterprise manuals, improving text processing speed by 25% for a generative AI chatbot.'
+				subtitle: 'Python automation | TVS Credit',
+				facts: [
+					{ label: 'Data', text: 'Unstructured enterprise manuals.' },
+					{
+						label: 'Approach',
+						text: 'Python scripts parse, extract and chunk the text for a generative AI chatbot.'
+					},
+					{ label: 'Result', text: '25% faster text processing.' }
 				],
-				disciplines: ['backend']
+				flowSteps: ['Manuals', 'Parse', 'Extract', 'Chunk', 'Chatbot'],
+				technologies: ['Python'],
+				disciplines: ['backend'],
+				isSample: false,
+				telemetryBars: [
+					{ label: 'Text processing speed, before', barPercent: 80, displayValue: 'baseline' },
+					{ label: 'With the automation scripts (+25%)', barPercent: 100, displayValue: '+25%' }
+				]
 			}
 		]
 	},
@@ -827,38 +1018,94 @@ const allSections: Section[] = [
 		kind: 'incident-report',
 		id: 'incident-report',
 		menuLabel: 'Incident',
-		title: 'Incident report',
+		title: 'Incident reports',
 		aircraftPart: 'black-box',
 		aircraftPartName: 'Black box',
 		partExplanation:
 			'The flight data recorder, or black box, sits in the tail and records what happened so engineers can learn from it. This is how I write up a bug.',
 		camera: { centerX: 200, centerY: 478, zoom: 3.4 },
 		hasSampleContent: true,
-		report: {
-			incidentId: 'INC-2026-001',
-			headline: 'Shipment list endpoint slowed under peak load',
-			severity: 'Moderate',
-			status: 'Resolved',
-			summary:
-				'Response times for the shipment list climbed from under a second to several seconds as record volume grew.',
-			timeline: [
-				{ time: '09:12', event: 'Latency alert fires' },
-				{ time: '09:40', event: 'Slow query traced using correlation IDs' },
-				{ time: '11:05', event: 'Fix deployed' },
-				{ time: '11:30', event: 'Latency back to normal' }
-			],
-			probableCause:
-				'A missing composite index plus an N+1 query pattern when loading tracking history.',
-			contributingFactors:
-				'No query-plan review in code review, and data volume had outgrown early assumptions.',
-			correctiveActions: [
-				'Added a composite index on shipment ID and status',
-				'Replaced the N+1 pattern with a single joined query',
-				'Added slow-query logging and a latency alert',
-				'Added a regression test'
-			],
-			outcome: 'Data load efficiency improved by 25%.'
-		}
+		reports: [
+			{
+				incidentId: 'INC-2026-001',
+				headline: 'Shipment list endpoint slowed under peak load',
+				severity: 'Moderate',
+				status: 'Resolved',
+				summary:
+					'Response times for the shipment list climbed from under a second to several seconds as record volume grew.',
+				timeline: [
+					{ time: '09:12', event: 'Latency alert fires' },
+					{ time: '09:40', event: 'Slow query traced using correlation IDs' },
+					{ time: '11:05', event: 'Fix deployed' },
+					{ time: '11:30', event: 'Latency back to normal' }
+				],
+				probableCause:
+					'A missing composite index plus an N+1 query pattern when loading tracking history.',
+				contributingFactors:
+					'No query-plan review in code review, and data volume had outgrown early assumptions.',
+				correctiveActions: [
+					'Added a composite index on shipment ID and status',
+					'Replaced the N+1 pattern with a single joined query',
+					'Added slow-query logging and a latency alert',
+					'Added a regression test'
+				],
+				outcome: 'Data load efficiency improved by 25%.',
+				isSample: true,
+				startsOpen: true,
+				telemetryBars: [
+					{
+						label: 'Shipment list response, during the incident',
+						barPercent: 100,
+						displayValue: '3.4 s'
+					},
+					{ label: 'After the fix', barPercent: 18, displayValue: '0.6 s' }
+				]
+			},
+			{
+				incidentId: 'INC-2026-002',
+				headline: 'Image upload endpoint timed out on large batches',
+				severity: 'Moderate',
+				status: 'Resolved',
+				summary:
+					'Uploads of many large images stalled the inference endpoint and some requests timed out.',
+				timeline: [
+					{ time: '14:05', event: 'Timeout errors reported by testers' },
+					{ time: '14:30', event: 'Large uploads identified as the trigger' },
+					{ time: '16:10', event: 'Fix deployed' }
+				],
+				probableCause:
+					'Full-size images went straight to the model, so each request held a worker for too long.',
+				contributingFactors: 'No upload size limit and no request timeouts.',
+				correctiveActions: [
+					'Resize images before inference',
+					'Added upload size limits and request timeouts',
+					'Added a health-check endpoint'
+				],
+				outcome: 'Large uploads now complete reliably.',
+				isSample: true
+			},
+			{
+				incidentId: 'INC-2026-003',
+				headline: 'Dashboard showed stale shipment status',
+				severity: 'Low',
+				status: 'Resolved',
+				summary: 'Some operators saw old shipment statuses after an update.',
+				timeline: [
+					{ time: '10:15', event: 'Operator reports an out-of-date status' },
+					{ time: '10:50', event: 'Cached API responses identified' },
+					{ time: '12:00', event: 'Fix deployed' }
+				],
+				probableCause: 'A cached response was served after the shipment record had changed.',
+				contributingFactors: 'Cache headers were never reviewed for frequently changing data.',
+				correctiveActions: [
+					'Set cache headers per endpoint',
+					'Refetch status after every update',
+					'Added a test for stale data'
+				],
+				outcome: 'Operators now see the current status after every update.',
+				isSample: true
+			}
+		]
 	},
 	{
 		kind: 'certifications',

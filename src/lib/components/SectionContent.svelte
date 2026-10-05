@@ -1,11 +1,8 @@
 <script lang="ts">
 	import Accordion from './Accordion.svelte';
-	import ApiPlayground from './ApiPlayground.svelte';
-	import ArchitectureSchematic from './ArchitectureSchematic.svelte';
 	import BoardingPass from './BoardingPass.svelte';
-	import FlightBoard from './FlightBoard.svelte';
-	import FlowSteps from './FlowSteps.svelte';
 	import Gauge from './Gauge.svelte';
+	import IncidentCard from './IncidentCard.svelte';
 	import ProjectCard from './ProjectCard.svelte';
 	import SectionLinkList from './SectionLinkList.svelte';
 	import { useNavigation } from '#lib/navigation-context.js';
@@ -15,7 +12,6 @@
 		profile,
 		SHOW_SAMPLE_BADGES,
 		type Discipline,
-		type DisciplineTopic,
 		type Section
 	} from '#lib/data/sections.js';
 
@@ -55,31 +51,6 @@
 				>{/if}
 		{/each}
 	</div>
-{/snippet}
-
-<!-- Accordion list used by the Frontend and AI/ML sections. -->
-{#snippet topicAccordions(topics: DisciplineTopic[], groupName: string)}
-	{#each topics as topic (topic.title)}
-		<Accordion
-			title={topic.title}
-			subtitle={topic.subtitle}
-			groupName={accordionGroup(groupName)}
-			startsOpen={opensByDefault(topic.startsOpen)}
-			showSampleBadge={SHOW_SAMPLE_BADGES && topic.isSample}
-		>
-			{#if topic.description}<p>{topic.description}</p>{/if}
-			{#if topic.showsFlightBoard}<FlightBoard />{/if}
-			{#if topic.flowSteps}<FlowSteps steps={topic.flowSteps} />{/if}
-			{#if topic.bulletPoints}
-				<ul class="bullet-list">
-					{#each topic.bulletPoints as bulletPoint (bulletPoint)}
-						<li>{bulletPoint}</li>
-					{/each}
-				</ul>
-			{/if}
-			<SectionLinkList heading="Flown with" links={disciplinesToLinks(topic.disciplines)} />
-		</Accordion>
-	{/each}
 {/snippet}
 
 <header class="section-header">
@@ -158,62 +129,27 @@
 			<li>{technology}</li>
 		{/each}
 	</ul>
-	{@render topicAccordions(section.topics, section.id)}
-{:else if section.kind === 'backend'}
-	{@const totalRequestMs = section.requestHops.reduce((total, hop) => total + hop.durationMs, 0)}
 
+	{#each section.projects as project (project.title)}
+		<ProjectCard caseStudy={project} accordionGroup="frontend" {expandAll} />
+	{/each}
+
+	<h3>
+		How I build interfaces
+		{#if SHOW_SAMPLE_BADGES}<span class="sample-badge">sample data</span>{/if}
+	</h3>
+	<ul class="bullet-list">
+		{#each section.principles as principle (principle)}
+			<li>{principle}</li>
+		{/each}
+	</ul>
+{:else if section.kind === 'backend'}
 	{@render disciplinePipeline('backend')}
 	<SectionLinkList heading="Used in" links={section.usedIn} />
 
-	<Accordion
-		title="System schematic"
-		subtitle="Shipment tracking platform | tap a node"
-		groupName={accordionGroup(section.id)}
-		startsOpen={opensByDefault(true)}
-	>
-		<ArchitectureSchematic nodes={section.architectureNodes} />
-	</Accordion>
-
-	<Accordion
-		title="Request flight path"
-		subtitle="One tracking request, hop by hop"
-		groupName={accordionGroup(section.id)}
-		startsOpen={expandAll}
-	>
-		<p>A request is a flight with waypoints. Time spent at each one:</p>
-		{#each section.requestHops as hop (hop.name)}
-			<div class="hop-row">
-				<span>{hop.name}</span>
-				<div class="hop-bar" style:width="{(hop.durationMs / totalRequestMs) * 100}%"></div>
-				<span class="hop-duration">{hop.durationMs} ms</span>
-			</div>
-		{/each}
-		<p class="meta-text">Total {totalRequestMs} ms</p>
-	</Accordion>
-
-	<Accordion
-		title="Try the API"
-		subtitle="Mock shipment tracker"
-		groupName={accordionGroup(section.id)}
-		startsOpen={expandAll}
-	>
-		<ApiPlayground />
-	</Accordion>
-
-	<Accordion
-		title="Telemetry"
-		subtitle="Before and after query tuning"
-		groupName={accordionGroup(section.id)}
-		startsOpen={expandAll}
-	>
-		{#each section.telemetryBars as bar (bar.label)}
-			<div class="telemetry-row">
-				<span class="telemetry-label">{bar.label}</span>
-				<div class="telemetry-bar" style:width="{bar.barPercent}%"></div>
-				<span class="telemetry-value">{bar.displayValue}</span>
-			</div>
-		{/each}
-	</Accordion>
+	{#each section.projects as project (project.title)}
+		<ProjectCard caseStudy={project} accordionGroup="backend" {expandAll} />
+	{/each}
 {:else if section.kind === 'ai-ml'}
 	{@render disciplinePipeline('ai-ml')}
 	<SectionLinkList heading="Used in" links={section.usedIn} />
@@ -229,7 +165,10 @@
 			<li>{technology}</li>
 		{/each}
 	</ul>
-	{@render topicAccordions(section.topics, section.id)}
+
+	{#each section.projects as project (project.title)}
+		<ProjectCard caseStudy={project} accordionGroup="ai-ml" {expandAll} />
+	{/each}
 {:else if section.kind === 'skills'}
 	{#each section.groups as group (group.name)}
 		<h3>{group.name}</h3>
@@ -248,37 +187,9 @@
 		<a href={section.githubUrl} target="_blank" rel="noopener noreferrer">github.com/ArjunM05</a>
 	</p>
 {:else if section.kind === 'incident-report'}
-	{@const report = section.report}
-	<dl class="incident-report">
-		<dt>Incident</dt>
-		<dd>{report.incidentId}: {report.headline}</dd>
-		<dt>Severity / status</dt>
-		<dd>{report.severity} / {report.status}</dd>
-		<dt>Summary</dt>
-		<dd>{report.summary}</dd>
-		<dt>Timeline</dt>
-		<dd>
-			<ul class="bullet-list">
-				{#each report.timeline as entry (entry.time)}
-					<li>{entry.time} {entry.event}</li>
-				{/each}
-			</ul>
-		</dd>
-		<dt>Probable cause</dt>
-		<dd>{report.probableCause}</dd>
-		<dt>Contributing factors</dt>
-		<dd>{report.contributingFactors}</dd>
-		<dt>Corrective actions</dt>
-		<dd>
-			<ul class="bullet-list">
-				{#each report.correctiveActions as action (action)}
-					<li>{action}</li>
-				{/each}
-			</ul>
-		</dd>
-		<dt>Outcome</dt>
-		<dd>{report.outcome}</dd>
-	</dl>
+	{#each section.reports as report (report.incidentId)}
+		<IncidentCard {report} accordionGroup="incidents" {expandAll} />
+	{/each}
 {:else if section.kind === 'certifications'}
 	<ul class="bullet-list">
 		{#each section.certifications as certification (certification)}
@@ -310,6 +221,15 @@
 	<a class="action-button" href={profile.resumeUrl} download={profile.resumeFileName}
 		>Download resume</a
 	>
+	<aside class="landing-card" aria-label="End of flight">
+		<p class="part-label">Landing</p>
+		<p class="landing-title">
+			Flight complete. Thank you for flying with {section.boardingPass.airlineName}.
+		</p>
+		<button type="button" class="action-button" onclick={() => goToSection('intro')}
+			>Fly again</button
+		>
+	</aside>
 {/if}
 
 <style>
@@ -414,68 +334,14 @@
 		color: var(--amber);
 	}
 
-	/* ---------- backend: request path and telemetry ---------- */
-	.hop-row {
-		display: grid;
-		grid-template-columns: 130px 1fr 54px;
-		align-items: center;
-		gap: 8px;
-		margin: 5px 0;
-		font: 12px var(--mono);
+	.landing-card {
+		margin-top: 24px;
+		padding: 14px;
+		border: 1px dashed var(--amber);
 	}
 
-	.hop-bar {
-		height: 8px;
-		background: var(--amber);
-	}
-
-	.hop-duration {
-		color: var(--dim);
-		text-align: right;
-	}
-
-	.telemetry-row {
-		display: grid;
-		grid-template-columns: 1fr 60px;
-		gap: 2px 8px;
-		margin: 8px 0;
-		font: 12px var(--mono);
-	}
-
-	.telemetry-label {
-		grid-column: 1 / -1;
-		color: var(--dim);
-	}
-
-	.telemetry-bar {
-		height: 8px;
-		align-self: center;
-		background: var(--cyan);
-	}
-
-	.telemetry-value {
-		text-align: right;
-	}
-
-	/* ---------- incident report ---------- */
-	.incident-report {
-		margin: 6px 0;
-	}
-
-	.incident-report dt {
-		margin-top: 10px;
-		font: 11px var(--mono);
-		color: var(--cyan);
-		text-transform: uppercase;
-	}
-
-	.incident-report dd {
-		margin: 0;
-	}
-
-	@media (max-width: 520px) {
-		.hop-row {
-			grid-template-columns: 96px 1fr 48px;
-		}
+	.landing-title {
+		margin: 4px 0 0;
+		font: 600 18px/1.3 var(--sans);
 	}
 </style>

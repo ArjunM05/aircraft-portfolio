@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import FlightPath from '#lib/components/FlightPath.svelte';
 	import { profile, sections } from '#lib/data/sections.js';
 	import { provideNavigation } from '#lib/navigation-context.js';
 	import { providePortfolioState } from '#lib/portfolio-state.svelte.js';
@@ -11,13 +12,19 @@
 	// Every "go to this section" chip in the page ends up here.
 	provideNavigation((sectionId) => portfolio.goToSection(sectionId));
 
+	const waypoints = sections.map((section) => ({
+		id: section.id,
+		label: section.menuLabel,
+		title: section.title
+	}));
+
 	let headerElement: HTMLElement;
-	let burgerButton: HTMLButtonElement;
+	let burgerButton: HTMLButtonElement | undefined = $state();
 
 	function closeMenuOnEscape(event: KeyboardEvent) {
 		if (event.key === 'Escape' && portfolio.isMenuOpen) {
 			portfolio.closeMenu();
-			burgerButton.focus();
+			burgerButton?.focus();
 		}
 	}
 
@@ -30,62 +37,82 @@
 
 <svelte:window onkeydown={closeMenuOnEscape} onclick={closeMenuOnOutsideClick} />
 
-<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="app-shell" class:with-route-bar={!portfolio.isPlainView}>
+	<a class="skip-link" href="#main-content">Skip to content</a>
 
-<header class="site-header" class:menu-open={portfolio.isMenuOpen} bind:this={headerElement}>
-	<button type="button" class="brand" onclick={() => portfolio.goToSection('intro')}>
-		<span class="brand-name">{profile.name}</span>
-		<span class="brand-tagline">/ A350-900 portfolio</span>
-	</button>
+	<div class="site-chrome">
+		<header class="site-header" class:menu-open={portfolio.isMenuOpen} bind:this={headerElement}>
+			<button type="button" class="brand" onclick={() => portfolio.goToSection('intro')}>
+				<span class="brand-name">{profile.name}</span>
+				<span class="brand-tagline">/ A350-900 portfolio</span>
+			</button>
 
-	<nav id="section-menu" class="section-menu" aria-label="Portfolio sections">
-		<ul class="menu-list">
-			{#each sections as section, index (section.id)}
-				{@const isCurrentSection = !portfolio.isPlainView && index === portfolio.activeSectionIndex}
-				<li>
-					<button
-						type="button"
-						class="menu-item"
-						class:active={isCurrentSection}
-						aria-current={isCurrentSection ? 'true' : undefined}
-						onclick={() => portfolio.goToSection(section.id)}
-					>
-						{section.menuLabel}
-					</button>
-				</li>
-			{/each}
-		</ul>
-	</nav>
+			{#if portfolio.isPlainView}
+				<nav id="section-menu" class="section-menu" aria-label="Flight plan">
+					<ul class="menu-list">
+						{#each sections as section (section.id)}
+							<li>
+								<button
+									type="button"
+									class="menu-item"
+									onclick={() => portfolio.goToSection(section.id)}
+								>
+									{section.menuLabel}
+								</button>
+							</li>
+						{/each}
+					</ul>
+				</nav>
+			{/if}
 
-	<button
-		type="button"
-		class="plain-view-toggle"
-		aria-pressed={portfolio.isPlainView}
-		onclick={() => portfolio.togglePlainView()}
-	>
-		{portfolio.isPlainView ? 'Blueprint view' : 'Plain view'}
-	</button>
+			<button
+				type="button"
+				class="plain-view-toggle"
+				aria-pressed={portfolio.isPlainView}
+				onclick={() => portfolio.togglePlainView()}
+			>
+				{portfolio.isPlainView ? 'Blueprint view' : 'Plain view'}
+			</button>
 
-	<button
-		bind:this={burgerButton}
-		type="button"
-		class="burger"
-		aria-expanded={portfolio.isMenuOpen}
-		aria-controls="section-menu"
-		aria-label={portfolio.isMenuOpen ? 'Close menu' : 'Open menu'}
-		onclick={() => portfolio.toggleMenu()}
-	>
-		<span class="burger-bar"></span>
-		<span class="burger-bar"></span>
-		<span class="burger-bar"></span>
-	</button>
-</header>
+			{#if portfolio.isPlainView}
+				<button
+					bind:this={burgerButton}
+					type="button"
+					class="burger"
+					aria-expanded={portfolio.isMenuOpen}
+					aria-controls="section-menu"
+					aria-label={portfolio.isMenuOpen ? 'Close flight plan' : 'Open flight plan'}
+					onclick={() => portfolio.toggleMenu()}
+				>
+					<span class="burger-bar"></span>
+					<span class="burger-bar"></span>
+					<span class="burger-bar"></span>
+				</button>
+			{/if}
+		</header>
 
-<main id="main-content">
-	{@render children()}
-</main>
+		{#if !portfolio.isPlainView}
+			<FlightPath
+				{waypoints}
+				activeIndex={portfolio.activeSectionIndex}
+				onSelectWaypoint={(sectionId) => portfolio.goToSection(sectionId)}
+				departureCode="MAA"
+				arrivalCode="YOU"
+			/>
+		{/if}
+	</div>
+
+	<main id="main-content">
+		{@render children()}
+	</main>
+</div>
 
 <style>
+	/* Pinned height at the top: just the header in plain view, header plus flight path in blueprint view. */
+	.app-shell.with-route-bar {
+		--chrome-height: calc(var(--header-height) + var(--route-bar-height));
+	}
+
 	/* ---------- skip link (visible only when focused with the keyboard) ---------- */
 	.skip-link {
 		position: absolute;
@@ -102,11 +129,15 @@
 		top: 8px;
 	}
 
-	/* ---------- header bar ---------- */
-	.site-header {
+	/* ---------- pinned top area ---------- */
+	.site-chrome {
 		position: sticky;
 		top: 0;
 		z-index: 30;
+	}
+
+	.site-header {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 8px;
@@ -136,7 +167,7 @@
 		color: var(--cyan);
 	}
 
-	/* ---------- section menu (inline on wide screens) ---------- */
+	/* ---------- section menu (plain view, inline on wide screens) ---------- */
 	.menu-list {
 		display: flex;
 		gap: 2px;
@@ -157,11 +188,7 @@
 
 	.menu-item:hover {
 		color: var(--cyan);
-	}
-
-	.menu-item.active {
-		color: var(--amber);
-		border-bottom-color: var(--amber);
+		border-bottom-color: var(--cyan);
 	}
 
 	.menu-item:focus-visible,
@@ -189,7 +216,7 @@
 		color: var(--bg);
 	}
 
-	/* ---------- burger icon (hidden on wide screens) ---------- */
+	/* ---------- burger icon (plain view, narrow screens only) ---------- */
 	.burger {
 		display: none;
 		flex-direction: column;
@@ -229,7 +256,7 @@
 		}
 	}
 
-	/* Menu collapses into a dropdown behind the burger icon. */
+	/* The plain-view menu collapses into a dropdown behind the burger icon. */
 	@media (max-width: 1280px) {
 		.burger {
 			display: flex;
@@ -262,10 +289,6 @@
 			border-bottom: 1px solid var(--grid);
 			font-size: 14px;
 			text-align: left;
-		}
-
-		.menu-item.active {
-			background: rgba(255, 180, 84, 0.12);
 		}
 	}
 

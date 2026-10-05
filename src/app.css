@@ -12,6 +12,9 @@
 	--sans: 'Barlow Semi Condensed', 'Arial Narrow', Arial, sans-serif;
 	--mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
 	--header-height: 52px;
+	--route-bar-height: 64px;
+	/* Height of everything pinned to the top. The layout adds the route bar in blueprint view. */
+	--chrome-height: var(--header-height);
 
 	color-scheme: dark;
 	box-sizing: border-box;

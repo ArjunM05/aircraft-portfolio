@@ -3,6 +3,7 @@
 	import { fade } from 'svelte/transition';
 	import { MediaQuery } from 'svelte/reactivity';
 	import Blueprint from '#lib/components/Blueprint.svelte';
+	import InstrumentCluster from '#lib/components/InstrumentCluster.svelte';
 	import SectionContent from '#lib/components/SectionContent.svelte';
 	import {
 		getSectionIndex,
@@ -14,23 +15,35 @@
 	import { usePortfolioState } from '#lib/portfolio-state.svelte.js';
 
 	/** How far the visitor scrolls (in screen heights, as a percentage) to move to the next section. */
-	const SCROLL_DISTANCE_PER_SECTION_VH = 55;
+	const SCROLL_DISTANCE_PER_SECTION_VH = 45;
 	/** Minimum horizontal finger movement that counts as a swipe on phones. */
 	const SWIPE_DISTANCE_THRESHOLD_PX = 50;
 
 	const portfolio = usePortfolioState();
 
-	/** On phones the page does not scroll between sections; the visitor taps or swipes instead. */
 	const isPhoneLayout = new MediaQuery('max-width: 820px', false);
+
+	const lastSectionIndex = sections.length - 1;
 
 	/** Aircraft parts that have a visible section behind them. */
 	const interactiveParts = sections.map((section) => section.aircraftPart);
-	const lastSectionIndex = sections.length - 1;
+
+	/** Short caption per aircraft part, for the hover label. */
+	const partCaptions = Object.fromEntries(
+		sections.map((section) => [section.aircraftPart, section.title])
+	) as Partial<Record<AircraftPartId, string>>;
+
 	const scrollTrackHeight = $derived(
 		isPhoneLayout.current
 			? 'auto'
-			: `calc(100svh - var(--header-height) + ${lastSectionIndex * SCROLL_DISTANCE_PER_SECTION_VH}vh)`
+			: `calc(100svh - var(--chrome-height) + ${lastSectionIndex * SCROLL_DISTANCE_PER_SECTION_VH}vh)`
 	);
+
+	/** Hide the hint once the visitor has moved off the first section. */
+	let hasExplored = $state(false);
+	$effect(() => {
+		if (portfolio.activeSectionIndex !== 0) hasExplored = true;
+	});
 
 	let swipeStartX: number | null = null;
 
@@ -50,7 +63,7 @@
 		portfolio.activeSectionIndex = Math.min(lastSectionIndex, Math.max(0, nearestSection));
 	}
 
-	// Tell the header and every "go to section" chip how this page navigates.
+	// Tell the header, flight path and every "go to section" chip how this page navigates.
 	$effect(() =>
 		portfolio.registerNavigator((sectionId: SectionId) => {
 			const sectionIndex = getSectionIndex(sectionId);
@@ -145,8 +158,18 @@
 					camera={portfolio.activeSection.camera}
 					onSelectPart={selectAircraftPart}
 					{interactiveParts}
-					cropToFit={isPhoneLayout.current}
+					{partCaptions}
+					orientation={isPhoneLayout.current ? 'horizontal' : 'vertical'}
 				/>
+
+				{#if !hasExplored}
+					<p class="explore-hint" transition:fade={{ duration: 300 }}>
+						This is an Airbus A350-900.
+						{isPhoneLayout.current
+							? 'Tap a waypoint above, or swipe, to explore each part.'
+							: 'Follow the flight path above, or click a glowing marker.'}
+					</p>
+				{/if}
 			</div>
 
 			<article class="detail-panel" aria-label="Section details">
@@ -165,7 +188,9 @@
 					>
 						&lsaquo; Prev
 					</button>
-					<span class="step-counter">{portfolio.activeSectionIndex + 1} / {sections.length}</span>
+					<span class="step-counter">
+						Waypoint {portfolio.activeSectionIndex + 1} / {sections.length}
+					</span>
 					<button
 						type="button"
 						class="step-button"
@@ -177,11 +202,17 @@
 				</footer>
 			</article>
 
-			<div class="title-block" aria-hidden="true">
-				DWG <strong>A350-900 / ARJUN-M</strong><br />
-				SHEET <strong>{portfolio.activeSectionIndex + 1}/{sections.length}</strong> &nbsp; REV
-				<strong>A</strong><br />
-				Scroll, or use the menu
+			<div class="instrument-panel" aria-hidden="true">
+				<InstrumentCluster
+					altitudeFeet={portfolio.flightStatus.altitudeFeet}
+					headingDegrees={portfolio.flightStatus.headingDegrees}
+					phase={portfolio.flightStatus.phase}
+				/>
+				<div class="title-block">
+					DWG <strong>A350-900 / ARJUN-M</strong><br />
+					WAYPOINT <strong>{portfolio.activeSectionIndex + 1}/{sections.length}</strong> &nbsp; REV
+					<strong>A</strong>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -207,10 +238,10 @@
 
 	.stage {
 		position: sticky;
-		top: var(--header-height);
+		top: var(--chrome-height);
 		display: grid;
 		grid-template-columns: 1fr minmax(340px, 540px);
-		height: calc(100svh - var(--header-height));
+		height: calc(100svh - var(--chrome-height));
 		overflow: hidden;
 		background:
 			linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 24px 24px,
@@ -219,8 +250,25 @@
 	}
 
 	.blueprint-area {
+		position: relative;
 		min-height: 0;
 		overflow: hidden;
+	}
+
+	.explore-hint {
+		position: absolute;
+		top: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+		max-width: calc(100% - 24px);
+		margin: 0;
+		padding: 6px 12px;
+		background: var(--panel);
+		border: 1px solid var(--cyan);
+		color: var(--cyan);
+		font: 12px/1.4 var(--mono);
+		text-align: center;
+		pointer-events: none;
 	}
 
 	.detail-panel {
@@ -272,10 +320,19 @@
 		color: var(--dim);
 	}
 
-	.title-block {
+	/* Instruments and drawing title block, bottom left of the blueprint. Never blocks clicks. */
+	.instrument-panel {
 		position: absolute;
 		left: 12px;
 		bottom: 12px;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 8px;
+		pointer-events: none;
+	}
+
+	.title-block {
 		padding: 6px 10px;
 		background: var(--panel);
 		border: 1px solid var(--line);
@@ -298,15 +355,22 @@
 	.plain-section {
 		padding: 22px 0;
 		border-bottom: 1px solid var(--grid);
-		/* Keep the heading clear of the sticky header after scrolling. */
-		scroll-margin-top: calc(var(--header-height) + 12px);
+		/* Keep the heading clear of the pinned header after scrolling. */
+		scroll-margin-top: calc(var(--chrome-height) + 12px);
+	}
+
+	/* ---------- short screens: drop the instruments ---------- */
+	@media (max-height: 560px) {
+		.instrument-panel {
+			display: none;
+		}
 	}
 
 	/* ---------- phones ---------- */
 	@media (max-width: 820px) {
 		.stage {
 			grid-template-columns: 1fr;
-			grid-template-rows: 27svh minmax(0, 1fr);
+			grid-template-rows: 30svh minmax(0, 1fr);
 		}
 
 		.detail-panel {
@@ -317,7 +381,7 @@
 			padding: 16px;
 		}
 
-		.title-block {
+		.instrument-panel {
 			display: none;
 		}
 	}
