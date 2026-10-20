@@ -132,3 +132,151 @@ body {
 		transition-duration: 0.01ms !important;
 	}
 }
+
+/* :where() keeps these rules weak, so component styles and utility classes still win. */
+:where(.section-body) h3 {
+	margin: 22px 0 2px;
+	font: 600 20px/1.2 var(--sans);
+}
+:where(.section-body) p {
+	max-width: 62ch;
+	margin: 6px 0;
+}
+:where(.section-body) a {
+	color: var(--line);
+}
+:where(.section-body) > .meta-text {
+	margin: 6px 0;
+}
+
+.bullet-list {
+	margin: 6px 0;
+	padding-left: 18px;
+}
+.bullet-list li {
+	max-width: 62ch;
+	margin: 3px 0;
+}
+
+.gauge-row {
+	display: flex;
+	gap: 8px;
+	margin: 14px 0;
+}
+
+.button-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.button-row .action-button {
+	margin-top: 8px;
+}
+
+/* ---------- landing animation timing ---------- */
+/*
+ * --reveal-start is when the aircraft and the intro panel begin to animate.
+ * It is only non-zero while the pre-flight overlay is actually on screen. The moment the
+ * overlay is gone (or was never rendered), everything starts immediately.
+ */
+:root {
+	--reveal-start: 0s;
+}
+
+html:not([data-intro-seen]):has(.preflight) {
+	--reveal-start: 3.4s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html:not([data-intro-seen]):has(.preflight) {
+		--reveal-start: 0s;
+	}
+}
+
+/* Gentle rise-in. Set --enter-order (0, 1, 2...) on each element to stagger them. */
+@keyframes enter-up {
+	from {
+		opacity: 0;
+		transform: translateY(14px);
+	}
+}
+
+.enter-up {
+	animation: enter-up 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) backwards;
+	animation-delay: calc(var(--reveal-start) + 0.3s + var(--enter-order, 0) * 90ms);
+}
+
+/* ---------- extra animations: switched off from site-config.ts ---------- */
+/* The classes are put on .app-shell by +layout.svelte. */
+.no-preflight {
+	--reveal-start: 0s; /* nothing to wait for when the intro is off */
+}
+
+.no-drafting .aircraft-part,
+.no-drafting .hotspot {
+	animation: none !important;
+}
+.no-drafting .scan-line {
+	display: none;
+}
+
+.no-entrance .enter-up,
+.no-entrance .typed {
+	animation: none !important;
+}
+.no-entrance .gauge-fill {
+	transition-delay: 0s !important;
+}
+
+/* ---------- card grids (use the wide panel) ---------- */
+/* Closed cards sit side by side as tiles; the open card takes the whole row. */
+.card-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+	align-items: start;
+	gap: 12px;
+	margin: 10px 0;
+}
+
+.card-grid > details.accordion {
+	margin: 0;
+}
+
+.card-grid > details.accordion[open] {
+	grid-column: 1 / -1;
+}
+
+/* Skills: one block per group, in as many columns as fit. */
+.skill-groups {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+	gap: 4px 24px;
+}
+
+.skill-groups h3 {
+	margin-top: 14px;
+}
+
+/* Long bullet lists flow into columns when there is room. */
+.cert-list {
+	columns: 2 260px;
+	column-gap: 28px;
+}
+
+.cert-list li {
+	break-inside: avoid;
+}
+
+/* Wrapper around a card when the grid animates its reordering (see ProjectsView). */
+.card-slot {
+	min-width: 0;
+}
+
+.card-slot > details.accordion {
+	margin: 0;
+}
+
+.card-slot:has(> details.accordion[open]) {
+	grid-column: 1 / -1;
+}

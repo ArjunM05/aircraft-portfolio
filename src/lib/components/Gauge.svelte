@@ -73,6 +73,7 @@
 	.gauge-fill {
 		stroke: var(--amber);
 		transition: stroke-dasharray 0.9s cubic-bezier(0.5, 0, 0.2, 1);
+		transition-delay: calc(var(--reveal-start, 0s) + 0.6s);
 	}
 
 	text {

@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { AircraftPartId, CameraTarget } from '#lib/data/sections.js';
+	import type { AircraftPartId, CameraTarget } from '#lib/blueprint/types.js';
 
 	/** How a shape is drawn: normal outline, small decoration, or an invisible bigger click target. */
 	type ShapeRole = 'outline' | 'detail' | 'hit-area';
@@ -234,10 +234,51 @@
 		elevators: { x: 260, y: 530 },
 		rudder: { x: 200, y: 541 }
 	};
+
+	/** The middle of the aircraft in the drawing. Backdrops (such as the radar) are centred on it. */
+	interface AircraftCenter {
+		x: number;
+		y: number;
+	}
+
+	const AIRCRAFT_CENTER = { x: 200, y: 306 };
+
+	/* ---------- radar behind the aircraft ---------- */
+	const RADAR_RING_RADIUS = 330;
+	const RADAR_RING_INDEXES = [0, 1, 2];
+	const RADAR_SWEEP_RADIUS = 300;
+	const RADAR_SWEEP_SECONDS_PER_TURN = 10;
+	const RADAR_SWEEP_SLICE_COUNT = 6;
+	const RADAR_SWEEP_SLICE_DEGREES = 12;
+	const RADAR_SWEEP_LEADING_OPACITY = 0.14;
+
+	/** Angle 0 points straight up; angles grow clockwise. */
+	function radarPointAt(angleDegrees: number) {
+		const radians = (angleDegrees * Math.PI) / 180;
+		return {
+			x: AIRCRAFT_CENTER.x + RADAR_SWEEP_RADIUS * Math.sin(radians),
+			y: AIRCRAFT_CENTER.y - RADAR_SWEEP_RADIUS * Math.cos(radians)
+		};
+	}
+
+	function radarSlicePath(fromDegrees: number, toDegrees: number): string {
+		const start = radarPointAt(fromDegrees);
+		const end = radarPointAt(toDegrees);
+		return `M ${AIRCRAFT_CENTER.x} ${AIRCRAFT_CENTER.y} L ${start.x} ${start.y} A ${RADAR_SWEEP_RADIUS} ${RADAR_SWEEP_RADIUS} 0 0 1 ${end.x} ${end.y} Z`;
+	}
+
+	const radarSweepSlices = Array.from({ length: RADAR_SWEEP_SLICE_COUNT }, (_, index) => ({
+		path: radarSlicePath(
+			-(index + 1) * RADAR_SWEEP_SLICE_DEGREES,
+			-index * RADAR_SWEEP_SLICE_DEGREES
+		),
+		opacity: RADAR_SWEEP_LEADING_OPACITY * (1 - index / RADAR_SWEEP_SLICE_COUNT)
+	}));
 </script>
 
 <script lang="ts">
 	import { untrack } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 
 	interface Props {
 		/** The part that is currently highlighted. */
@@ -252,6 +293,8 @@
 		interactiveParts: AircraftPartId[];
 		/** Short caption per part, shown in the hover label (for example "Skills"). */
 		partCaptions: Partial<Record<AircraftPartId, string>>;
+		/** Optional drawing drawn behind the aircraft, centred on it. It pans and zooms with the camera. */
+		showRadar?: boolean;
 	}
 
 	let {
@@ -260,8 +303,11 @@
 		onSelectPart,
 		interactiveParts,
 		partCaptions,
-		orientation = 'vertical'
+		orientation = 'vertical',
+		showRadar = false
 	}: Props = $props();
+
+	const prefersReducedMotion = new MediaQuery('prefers-reduced-motion: reduce', false);
 
 	// Start exactly where the camera is told to be, so the first paint is already correct.
 	// untrack: we intentionally capture only the initial value here; the effect below follows changes.
@@ -361,13 +407,45 @@
 			{/each}
 		{/snippet}
 
+		{#snippet radar()}
+			<g aria-hidden="true">
+				{#if !prefersReducedMotion.current}
+					<g>
+						<animateTransform
+							attributeName="transform"
+							type="rotate"
+							from="0 {AIRCRAFT_CENTER.x} {AIRCRAFT_CENTER.y}"
+							to="360 {AIRCRAFT_CENTER.x} {AIRCRAFT_CENTER.y}"
+							dur="{RADAR_SWEEP_SECONDS_PER_TURN}s"
+							repeatCount="indefinite"
+						/>
+						{#each radarSweepSlices as slice, index (index)}
+							<path class="radar-slice" d={slice.path} fill-opacity={slice.opacity} />
+						{/each}
+					</g>
+				{/if}
+
+				{#each RADAR_RING_INDEXES as ringIndex (ringIndex)}
+					<circle
+						class="radar-ring"
+						cx={AIRCRAFT_CENTER.x}
+						cy={AIRCRAFT_CENTER.y}
+						r={RADAR_RING_RADIUS}
+						style:--ring-index={ringIndex}
+					/>
+				{/each}
+			</g>
+		{/snippet}
+
 		<g transform={cameraTransform}>
+			{#if showRadar}{@render radar()}{/if}
 			<path class="center-line" d="M200 0V640" />
 
-			{#each aircraftParts as part (part.id)}
+			{#each aircraftParts as part, partIndex (part.id)}
 				{#if interactiveParts.includes(part.id)}
 					<g
 						class="aircraft-part"
+						style:--part-index={partIndex}
 						class:active={part.id === activePart}
 						role="button"
 						tabindex="0"
@@ -383,8 +461,7 @@
 						{@render partShapes(part)}
 					</g>
 				{:else}
-					<!-- Drawn so the aircraft keeps its full shape, but nothing happens when it is clicked. -->
-					<g class="aircraft-part inert" aria-hidden="true">
+					<g class="aircraft-part inert" style:--part-index={partIndex} aria-hidden="true">
 						{@render partShapes(part)}
 					</g>
 				{/if}
@@ -401,6 +478,7 @@
 			{/each}
 		</g>
 	</svg>
+	<div class="scan-line" aria-hidden="true"></div>
 	{#if hoverCaption}
 		<p class="part-caption" aria-hidden="true">{hoverCaption}</p>
 	{/if}
@@ -432,6 +510,8 @@
 		transition:
 			fill 0.3s,
 			stroke 0.3s;
+		animation: draft-in 0.7s ease-out backwards;
+		animation-delay: calc(var(--reveal-start, 0s) + var(--part-index, 0) * 90ms);
 	}
 
 	.aircraft-part:hover {
@@ -526,6 +606,91 @@
 		.hotspot-pulse {
 			animation: none;
 			opacity: 0.5;
+		}
+	}
+
+	/* Each part fades in with a brief cyan outline, as if being drawn. */
+	@keyframes draft-in {
+		from {
+			opacity: 0;
+			stroke: var(--cyan);
+		}
+	}
+
+	/* Markers appear once the drawing is done. */
+	.hotspot {
+		animation: hotspot-in 0.5s ease-out backwards;
+		animation-delay: calc(var(--reveal-start, 0s) + 1.5s);
+	}
+
+	@keyframes hotspot-in {
+		from {
+			opacity: 0;
+		}
+	}
+
+	/* A scan line sweeps from nose to tail while the drawing appears. */
+	.scan-line {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 2px;
+		opacity: 0;
+		pointer-events: none;
+		background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+		box-shadow: 0 0 14px var(--cyan);
+		animation: scan-down 1.6s ease-in-out backwards;
+		animation-delay: var(--reveal-start, 0s);
+	}
+
+	@keyframes scan-down {
+		0% {
+			top: 0;
+			opacity: 0;
+		}
+		10%,
+		90% {
+			opacity: 0.9;
+		}
+		100% {
+			top: 100%;
+			opacity: 0;
+		}
+	}
+
+	.radar-slice {
+		fill: var(--cyan);
+	}
+
+	.radar-ring {
+		fill: none;
+		stroke: var(--cyan);
+		stroke-width: 1;
+		vector-effect: non-scaling-stroke;
+		opacity: 0;
+		transform-box: fill-box;
+		transform-origin: center;
+		animation: radar-ping 7s ease-out infinite;
+		animation-delay: calc(var(--ring-index) * 2.3s);
+	}
+
+	@keyframes radar-ping {
+		from {
+			opacity: 0.3;
+			transform: scale(0.15);
+		}
+		to {
+			opacity: 0;
+			transform: scale(1);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.radar-ring {
+			animation: none;
+			opacity: 0.1;
+			transform: scale(0.6);
 		}
 	}
 </style>

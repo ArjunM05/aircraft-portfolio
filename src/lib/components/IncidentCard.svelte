@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Accordion from './Accordion.svelte';
-	import TelemetryBars from './TelemetryBars.svelte';
+	import CardExtras from './CardExtras.svelte';
 	import { SHOW_SAMPLE_BADGES, type IncidentReport } from '#lib/data/sections.js';
 
 	interface Props {
@@ -53,10 +53,8 @@
 		<dd>{report.outcome}</dd>
 	</dl>
 
-	{#if report.telemetryBars}
-		<Accordion title="Telemetry" subtitle="Before and after the fix" startsOpen={expandAll}>
-			<TelemetryBars bars={report.telemetryBars} />
-		</Accordion>
+	{#if report.extras}
+		<CardExtras extras={report.extras} {expandAll} />
 	{/if}
 </Accordion>
 

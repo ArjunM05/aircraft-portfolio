@@ -21,6 +21,24 @@
 			href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;600&family=IBM+Plex+Mono:wght@400&display=swap"
 			rel="stylesheet"
 		/>
+		<script>
+			// Has the pre-flight intro already played in this tab? Decided before the first paint.
+			// The key must match PREFLIGHT_SEEN_STORAGE_KEY in src/lib/data/preflight-checklist.ts.
+			try {
+				if (sessionStorage.getItem('portfolio-preflight-seen')) {
+					document.documentElement.dataset.introSeen = 'true';
+				}
+			} catch {
+				/* storage blocked: the intro simply plays */
+			}
+		</script>
+		<noscript
+			><style>
+				.preflight {
+					display: none !important;
+				}
+			</style></noscript
+		>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

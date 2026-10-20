@@ -1,14 +1,16 @@
 <script lang="ts">
 	import Accordion from './Accordion.svelte';
-	import ApiPlayground from './ApiPlayground.svelte';
-	import ArchitectureSchematic from './ArchitectureSchematic.svelte';
-	import FlightBoard from './FlightBoard.svelte';
+	import CardExtras from './CardExtras.svelte';
 	import FlowSteps from './FlowSteps.svelte';
-	import RequestPath from './RequestPath.svelte';
 	import SectionLinkList from './SectionLinkList.svelte';
-	import TelemetryBars from './TelemetryBars.svelte';
+	import { disciplinesToLinks } from '#lib/data/disciplines.js';
+	import { SHOW_SAMPLE_BADGES } from '#lib/data/site-config.js';
+	import type { CaseStudy } from '#lib/data/types.js';
 	import { useNavigation } from '#lib/navigation-context.js';
-	import { disciplinesToLinks, SHOW_SAMPLE_BADGES, type CaseStudy } from '#lib/data/sections.js';
+	import { analytics } from '#lib/analytics/analytics.js';
+	import { useExplorer } from '#lib/explorer-context.js';
+	import { makeCardId } from '#lib/search/portfolio-index.js';
+	import TechChips from './TechChips.svelte';
 
 	interface Props {
 		caseStudy: CaseStudy;
@@ -22,6 +24,9 @@
 
 	const goToSection = useNavigation();
 
+	const explorer = useExplorer();
+	const cardId = $derived(makeCardId(accordionGroup, caseStudy.title));
+
 	const hasActions = $derived(Boolean(caseStudy.sourceCodeUrl || caseStudy.relatedSection));
 </script>
 
@@ -31,7 +36,16 @@
 	groupName={expandAll ? undefined : accordionGroup}
 	startsOpen={expandAll || caseStudy.startsOpen}
 	showSampleBadge={SHOW_SAMPLE_BADGES && caseStudy.isSample}
+	// showSampleBadge={false}
+	{cardId}
+	reveal={explorer.revealedCardId === cardId}
+	onrevealed={() => explorer.clearReveal(cardId)}
+	onopen={() => analytics.track('card_opened', { card: cardId })}
 >
+	{#snippet preview()}
+		<TechChips technologies={caseStudy.technologies} />
+	{/snippet}
+
 	{#if caseStudy.facts.length > 0}
 		<dl class="fact-list">
 			{#each caseStudy.facts as fact (fact.label)}
@@ -39,10 +53,6 @@
 				<dd>{fact.text}</dd>
 			{/each}
 		</dl>
-	{/if}
-
-	{#if caseStudy.showsFlightBoard}
-		<FlightBoard />
 	{/if}
 
 	{#if caseStudy.flowSteps.length > 0}
@@ -57,32 +67,8 @@
 		</ul>
 	{/if}
 
-	{#if caseStudy.architectureNodes}
-		<Accordion title="System schematic" subtitle="Tap a node" startsOpen={expandAll}>
-			<ArchitectureSchematic nodes={caseStudy.architectureNodes} />
-		</Accordion>
-	{/if}
-
-	{#if caseStudy.requestHops}
-		<Accordion
-			title="Request flight path"
-			subtitle="One request, hop by hop"
-			startsOpen={expandAll}
-		>
-			<RequestPath hops={caseStudy.requestHops} />
-		</Accordion>
-	{/if}
-
-	{#if caseStudy.hasApiPlayground}
-		<Accordion title="Try the API" subtitle="Mock shipment tracker" startsOpen={expandAll}>
-			<ApiPlayground />
-		</Accordion>
-	{/if}
-
-	{#if caseStudy.telemetryBars}
-		<Accordion title="Telemetry" subtitle="Before and after" startsOpen={expandAll}>
-			<TelemetryBars bars={caseStudy.telemetryBars} />
-		</Accordion>
+	{#if caseStudy.extras}
+		<CardExtras extras={caseStudy.extras} {expandAll} />
 	{/if}
 
 	{#if hasActions}
@@ -97,7 +83,7 @@
 					Source code
 				</a>
 
-				{#if caseStudy.liveDemoUrl}
+				<!-- {#if caseStudy.liveDemoUrl}
 					<a
 						class="chip-link"
 						href={caseStudy.liveDemoUrl}
@@ -108,7 +94,7 @@
 					</a>
 				{:else}
 					<span class="chip-link chip-link--disabled">Live demo soon</span>
-				{/if}
+				{/if} -->
 			{/if}
 
 			{#if caseStudy.relatedSection}

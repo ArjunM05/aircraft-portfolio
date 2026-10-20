@@ -4,6 +4,13 @@
 	import { profile, sections } from '#lib/data/sections.js';
 	import { provideNavigation } from '#lib/navigation-context.js';
 	import { providePortfolioState } from '#lib/portfolio-state.svelte.js';
+	import PreflightIntro from '#lib/components/PreflightIntro.svelte';
+
+	import { isExtraAnimationOn } from '#lib/data/site-config.js';
+
+	const preflightIntroOn = isExtraAnimationOn('preflightIntro');
+	const draftingEffectOn = isExtraAnimationOn('draftingEffect');
+	const introEntranceOn = isExtraAnimationOn('introEntrance');
 
 	let { children } = $props();
 
@@ -37,7 +44,17 @@
 
 <svelte:window onkeydown={closeMenuOnEscape} onclick={closeMenuOnOutsideClick} />
 
-<div class="app-shell" class:with-route-bar={!portfolio.isPlainView}>
+{#if preflightIntroOn}
+	<PreflightIntro />
+{/if}
+
+<div
+	class="app-shell"
+	class:with-route-bar={!portfolio.isPlainView}
+	class:no-preflight={!preflightIntroOn}
+	class:no-drafting={!draftingEffectOn}
+	class:no-entrance={!introEntranceOn}
+>
 	<a class="skip-link" href="#main-content">Skip to content</a>
 
 	<div class="site-chrome">

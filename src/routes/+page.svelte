@@ -1,42 +1,166 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { MediaQuery } from 'svelte/reactivity';
 	import Blueprint from '#lib/components/Blueprint.svelte';
+	import { isExtraAnimationOn } from '#lib/data/site-config.js';
 	import InstrumentCluster from '#lib/components/InstrumentCluster.svelte';
 	import SectionContent from '#lib/components/SectionContent.svelte';
-	import {
-		getSectionIndex,
-		profile,
-		sections,
-		type AircraftPartId,
-		type SectionId
-	} from '#lib/data/sections.js';
+	import { findSectionIdForPart, getBlueprintBinding } from '#lib/blueprint/section-bindings.js';
+	import type { AircraftPartId } from '#lib/blueprint/types.js';
+	import { getSectionIndex, profile, sections, type SectionId } from '#lib/data/sections.js';
 	import { usePortfolioState } from '#lib/portfolio-state.svelte.js';
+	import TourBar from '#lib/components/TourBar.svelte';
+	import { GuidedTour } from '#lib/guided-tour.svelte.js';
+	import { provideGuidedTour } from '#lib/guided-tour-context.js';
+	import CommandPalette from '#lib/components/CommandPalette.svelte';
+	import { visitPaths } from '#lib/data/hero.js';
+	import { PortfolioExplorer } from '#lib/explorer.svelte.js';
+	import { provideExplorer } from '#lib/explorer-context.js';
+	import { buildPaletteEntries } from '#lib/search/palette-entries.js';
+	import { analytics } from '#lib/analytics/analytics.js';
+	import { downloadFile, openInNewTab } from '#lib/browser-helpers.js';
+	import TerminalDialog from '#lib/components/TerminalDialog.svelte';
+	import { buildTerminalCommands } from '#lib/terminal/commands.js';
 
 	/** How far the visitor scrolls (in screen heights, as a percentage) to move to the next section. */
 	const SCROLL_DISTANCE_PER_SECTION_VH = 45;
 	/** Minimum horizontal finger movement that counts as a swipe on phones. */
 	const SWIPE_DISTANCE_THRESHOLD_PX = 50;
 
+	/** What the visitor asked for. "balanced" lets the page switch between takeoff and cruise itself. */
+	type LayoutPreference = 'aircraft' | 'balanced' | 'reading';
+	/** The layout actually on screen. */
+	type StageLayout = 'aircraft' | 'takeoff' | 'cruise' | 'reading';
+
+	const LAYOUT_CHOICES: { value: LayoutPreference; label: string; hint: string }[] = [
+		{ value: 'aircraft', label: 'Aircraft', hint: 'Bigger blueprint, smaller text panel' },
+		{
+			value: 'balanced',
+			label: 'Balanced',
+			hint: 'Big aircraft on landing, more room for content afterwards'
+		},
+		{ value: 'reading', label: 'Reading', hint: 'Maximum room for content' }
+	];
+
 	const portfolio = usePortfolioState();
+
+	// The tour ends when the visitor wanders off its route or switches to plain view.
+	$effect(() => {
+		if (!tour.isActive) return;
+		if (portfolio.isPlainView || portfolio.activeSection.id !== tour.currentSectionId) {
+			tour.stop();
+		}
+	});
+
+	const tour = provideGuidedTour(
+		new GuidedTour(
+			(sectionId) => portfolio.goToSection(sectionId),
+			(sectionId) => getSectionIndex(sectionId) !== -1,
+			{
+				started: (path) => analytics.track('tour_started', { path: path.id }),
+				finished: (path) => analytics.track('tour_finished', { path: path.id })
+			}
+		)
+	);
+
+	const explorer = provideExplorer(new PortfolioExplorer());
+
+	let isPaletteOpen = $state(false);
+
+	/** In plain view the page is one long document, so jumping means scrolling to the section. */
+	function goToSectionFromPalette(sectionId: SectionId) {
+		if (portfolio.isPlainView) {
+			document.getElementById(`plain-${sectionId}`)?.scrollIntoView({ behavior: 'smooth' });
+			return;
+		}
+		portfolio.goToSection(sectionId);
+	}
+	let isTerminalOpen = $state(false);
+
+	function downloadResume(source: 'palette' | 'terminal') {
+		analytics.track('resume_downloaded', { source });
+		downloadFile(profile.resumeUrl, profile.resumeFileName);
+	}
+
+	const paletteEntries = buildPaletteEntries({
+		sections,
+		profile,
+		visitPaths,
+		goToSection: goToSectionFromPalette,
+		revealCard: (cardId, sectionId) => {
+			explorer.revealCard(cardId);
+			goToSectionFromPalette(sectionId);
+		},
+		showSkill: (skill) => {
+			explorer.selectedSkill = skill;
+			goToSectionFromPalette('skills');
+		},
+		startTour: (path) => tour.start(path),
+		togglePlainView: () => portfolio.togglePlainView(),
+		downloadResume: () => downloadResume('palette'),
+		openTerminal: () => (isTerminalOpen = true)
+	});
+
+	const terminalCommands = buildTerminalCommands({
+		profile,
+		sections,
+		flight: () => portfolio.flightStatus,
+		goToSection: goToSectionFromPalette,
+		downloadResume: () => downloadResume('terminal'),
+		openUrl: openInNewTab
+	});
+
+	onMount(() => {
+		// Lets CSS hide things that are only right once the real (phone or desktop) layout is known.
+		document.documentElement.dataset.hydrated = 'true';
+		analytics.start();
+	});
+
+	// Report each section once per visit.
+	const viewedSectionIds = new Set<SectionId>();
+	$effect(() => {
+		const sectionId = portfolio.activeSection.id;
+		if (portfolio.isPlainView || viewedSectionIds.has(sectionId)) return;
+		viewedSectionIds.add(sectionId);
+		analytics.track('section_viewed', { section: sectionId });
+	});
+
+	$effect(() => {
+		if (isPaletteOpen) analytics.track('palette_opened', {});
+	});
+
+	$effect(() => {
+		if (isTerminalOpen) analytics.track('terminal_opened', {});
+	});
+
+	function chooseLayout(layout: LayoutPreference) {
+		layoutPreference = layout;
+		analytics.track('layout_changed', { layout });
+	}
 
 	const isPhoneLayout = new MediaQuery('max-width: 820px', false);
 
 	const lastSectionIndex = sections.length - 1;
 
 	/** Aircraft parts that have a visible section behind them. */
-	const interactiveParts = sections.map((section) => section.aircraftPart);
+	const interactiveParts = sections.map((section) => getBlueprintBinding(section.id).part);
 
 	/** Short caption per aircraft part, for the hover label. */
 	const partCaptions = Object.fromEntries(
-		sections.map((section) => [section.aircraftPart, section.title])
+		sections.map((section) => [getBlueprintBinding(section.id).part, section.title])
 	) as Partial<Record<AircraftPartId, string>>;
 
-	const scrollTrackHeight = $derived(
-		isPhoneLayout.current
-			? 'auto'
-			: `calc(100svh - var(--chrome-height) + ${lastSectionIndex * SCROLL_DISTANCE_PER_SECTION_VH}vh)`
+	const activeBinding = $derived(getBlueprintBinding(portfolio.activeSection.id));
+
+	let layoutPreference = $state<LayoutPreference>('balanced');
+
+	const stageLayout = $derived<StageLayout>(
+		layoutPreference === 'balanced'
+			? portfolio.activeSectionIndex === 0
+				? 'takeoff'
+				: 'cruise'
+			: layoutPreference
 	);
 
 	/** Hide the hint once the visitor has moved off the first section. */
@@ -91,8 +215,11 @@
 	});
 
 	function selectAircraftPart(part: AircraftPartId) {
-		const matchingSection = sections.find((section) => section.aircraftPart === part);
-		if (matchingSection) portfolio.goToSection(matchingSection.id);
+		const sectionId = findSectionIdForPart(
+			part,
+			sections.map((section) => section.id)
+		);
+		if (sectionId) portfolio.goToSection(sectionId);
 	}
 
 	function goToAdjacentSection(direction: 1 | -1) {
@@ -150,32 +277,66 @@
 		{/each}
 	</div>
 {:else}
-	<div class="scroll-track" style:height={scrollTrackHeight}>
-		<div class="stage">
+	<div
+		class="scroll-track"
+		style:--scroll-extra="{lastSectionIndex * SCROLL_DISTANCE_PER_SECTION_VH}vh"
+	>
+		<div class="stage" data-layout={stageLayout}>
 			<div class="blueprint-area" use:listenForSwipes>
 				<Blueprint
-					activePart={portfolio.activeSection.aircraftPart}
-					camera={portfolio.activeSection.camera}
+					activePart={activeBinding.part}
+					camera={activeBinding.camera}
 					onSelectPart={selectAircraftPart}
 					{interactiveParts}
 					{partCaptions}
 					orientation={isPhoneLayout.current ? 'horizontal' : 'vertical'}
+					showRadar={isExtraAnimationOn('radarRings')}
 				/>
 
-				{#if !hasExplored}
+				{#if !hasExplored && stageLayout !== 'reading'}
 					<p class="explore-hint" transition:fade={{ duration: 300 }}>
 						This is an Airbus A350-900.
 						{isPhoneLayout.current
 							? 'Tap a waypoint above, or swipe, to explore each part.'
-							: 'Follow the flight path above, or click a glowing marker.'}
+							: 'Follow the flight path above, scroll through the page, or click a glowing marker.'}
 					</p>
 				{/if}
 			</div>
 
 			<article class="detail-panel" aria-label="Section details">
+				<div class="panel-toolbar">
+					<button type="button" class="search-button" onclick={() => (isPaletteOpen = true)}>
+						Search <kbd>Ctrl K</kbd>
+					</button>
+
+					<div
+						class="layout-group"
+						role="group"
+						aria-label="Choose how much room the aircraft gets"
+					>
+						<span class="toolbar-label">Layout</span>
+						{#each LAYOUT_CHOICES as choice (choice.value)}
+							<button
+								type="button"
+								class="layout-button"
+								class:active={layoutPreference === choice.value}
+								aria-pressed={layoutPreference === choice.value}
+								title={choice.hint}
+								onclick={() => chooseLayout(choice.value)}
+							>
+								{choice.label}
+							</button>
+						{/each}
+					</div>
+				</div>
+
+				<TourBar />
+
 				{#key portfolio.activeSection.id}
 					<div class="panel-scroll" in:fade={{ duration: 180 }}>
-						<SectionContent section={portfolio.activeSection} />
+						<div class="panel-inner">
+							<SectionContent section={portfolio.activeSection} />
+						</div>
 					</div>
 				{/key}
 
@@ -218,6 +379,9 @@
 	</div>
 {/if}
 
+<CommandPalette entries={paletteEntries} bind:open={isPaletteOpen} />
+<TerminalDialog commands={terminalCommands} bind:open={isTerminalOpen} />
+
 <style>
 	.visually-hidden {
 		position: absolute;
@@ -234,12 +398,14 @@
 	/* ---------- blueprint view ---------- */
 	.scroll-track {
 		position: relative;
+		height: calc(100svh - var(--chrome-height) + var(--scroll-extra));
 	}
 
 	.stage {
 		position: sticky;
 		top: var(--chrome-height);
 		display: grid;
+		/* Real column sizes come from the inline style (see stageColumns). */
 		grid-template-columns: 1fr minmax(340px, 540px);
 		height: calc(100svh - var(--chrome-height));
 		overflow: hidden;
@@ -247,10 +413,29 @@
 			linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 24px 24px,
 			linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 24px 24px,
 			var(--bg);
+		/* The aircraft glides between "takeoff" and "cruise" instead of jumping. */
+		transition: grid-template-columns 450ms cubic-bezier(0.2, 0.7, 0.2, 1);
+	}
+
+	.stage[data-layout='aircraft'] {
+		grid-template-columns: 60fr 40fr;
+	}
+
+	.stage[data-layout='takeoff'] {
+		grid-template-columns: 52fr 48fr;
+	}
+
+	.stage[data-layout='cruise'] {
+		grid-template-columns: 34fr 66fr;
+	}
+
+	.stage[data-layout='reading'] {
+		grid-template-columns: 18fr 82fr;
 	}
 
 	.blueprint-area {
 		position: relative;
+		min-width: 0;
 		min-height: 0;
 		overflow: hidden;
 	}
@@ -274,19 +459,67 @@
 	.detail-panel {
 		display: flex;
 		flex-direction: column;
+		min-width: 0;
 		min-height: 0;
 		margin: 12px 24px 16px 0;
 		background: var(--panel);
 		border: 1px solid var(--line);
 	}
 
+	.panel-toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 4px;
+		padding: 6px 10px;
+		border-bottom: 1px solid var(--grid);
+	}
+
+	.toolbar-label {
+		margin-right: 6px;
+		font: 11px var(--mono);
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--dim);
+	}
+
+	.layout-button {
+		padding: 4px 10px;
+		background: none;
+		border: 1px solid var(--grid);
+		color: var(--dim);
+		font: 12px var(--mono);
+		cursor: pointer;
+	}
+
+	.layout-button:hover {
+		color: var(--line);
+		border-color: var(--line);
+	}
+
+	.layout-button.active {
+		color: var(--cyan);
+		border-color: var(--cyan);
+	}
+
+	.layout-button:focus-visible {
+		outline: 2px solid var(--cyan);
+		outline-offset: 2px;
+	}
+
 	.panel-scroll {
 		flex: 1;
 		min-height: 0;
-		padding: 20px 26px;
+		padding: 22px clamp(16px, 3vw, 36px);
 		overflow-y: auto;
 		/* Scrolling inside the panel never scrolls the page behind it. */
 		overscroll-behavior: contain;
+	}
+
+	/* Keeps lines readable when the panel is very wide (Reading layout). */
+	.panel-inner {
+		max-width: 960px;
+		margin-inline: auto;
 	}
 
 	.panel-footer {
@@ -345,6 +578,51 @@
 		color: var(--line);
 	}
 
+	/* A slim aircraft rail has no room for instruments. */
+	.stage[data-layout='reading'] .instrument-panel {
+		display: none;
+	}
+
+	.layout-group {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.search-button {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 4px 10px;
+		background: none;
+		border: 1px solid var(--grid);
+		color: var(--dim);
+		font: 12px var(--mono);
+		cursor: pointer;
+	}
+
+	.search-button:hover {
+		color: var(--line);
+		border-color: var(--cyan);
+	}
+
+	.search-button:focus-visible {
+		outline: 2px solid var(--cyan);
+		outline-offset: 2px;
+	}
+
+	.search-button kbd {
+		padding: 0 5px;
+		border: 1px solid var(--grid);
+		font: 10px var(--mono);
+	}
+
+	@media (max-width: 820px) {
+		.search-button kbd {
+			display: none;
+		}
+	}
+
 	/* ---------- plain view ---------- */
 	.plain-view {
 		max-width: 780px;
@@ -366,15 +644,35 @@
 		}
 	}
 
+	@media (prefers-reduced-motion: reduce) {
+		.stage {
+			transition: none;
+		}
+	}
+
 	/* ---------- phones ---------- */
 	@media (max-width: 820px) {
-		.stage {
+		.scroll-track {
+			height: auto;
+		}
+
+		.stage,
+		.stage[data-layout] {
 			grid-template-columns: 1fr;
-			grid-template-rows: 30svh minmax(0, 1fr);
+			grid-template-rows: 28svh minmax(0, 1fr);
+		}
+
+		/* The aircraft is drawn sideways on phones, which is only known after hydration. */
+		:global(html:not([data-hydrated])) .blueprint-area {
+			visibility: hidden;
 		}
 
 		.detail-panel {
 			margin: 0 10px 10px;
+		}
+
+		.layout-group {
+			display: none;
 		}
 
 		.panel-scroll {

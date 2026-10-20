@@ -1,5 +1,6 @@
 <script lang="ts" module>
 	import type { ContactSection } from '#lib/data/sections.js';
+	import { analytics } from '#lib/analytics/analytics.js';
 
 	export type BoardingPassDetails = ContactSection['boardingPass'];
 	export type FallbackLink = ContactSection['profileLinks'][number];
@@ -79,6 +80,8 @@
 				}),
 				signal: abortController.signal
 			});
+
+			analytics.track('message_sent', { method: 'web3forms' });
 
 			const result = await response.json();
 			return response.ok && result.success === true;
@@ -188,6 +191,8 @@
 		try {
 			await navigator.clipboard.writeText(text);
 			copyFeedback = successMessage;
+
+			analytics.track('message_sent', { method: 'fallback' });
 		} catch {
 			copyFeedback = 'Your browser blocked copying. Select the text and copy it manually.';
 		}
