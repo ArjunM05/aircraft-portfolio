@@ -1,5 +1,6 @@
 <script lang="ts">
 	import BoardingPass from '#lib/components/BoardingPass.svelte';
+	import { createDefaultMessageSender } from '#lib/contact/default-sender.js';
 	import { profile } from '#lib/data/profile.js';
 	import type { ContactSection } from '#lib/data/types.js';
 	import { useNavigation } from '#lib/navigation-context.js';
@@ -9,14 +10,13 @@
 
 	const goToSection = useNavigation();
 
-	// Still read here for now. A later refactor step injects it from one place instead.
-	const web3formsAccessKey: string | undefined = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY;
+	const messageSender = createDefaultMessageSender();
 </script>
 
 <BoardingPass
 	details={section.boardingPass}
 	recipientEmail={profile.email}
-	accessKey={web3formsAccessKey}
+	sender={messageSender}
 	fallbackLinks={section.profileLinks}
 />
 

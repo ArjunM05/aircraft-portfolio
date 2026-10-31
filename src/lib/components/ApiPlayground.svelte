@@ -12,15 +12,23 @@
 		shipment?: MockShipment;
 		bodyJson: string;
 	}
+
+	interface Props {
+		shipments: Record<string, MockShipment>;
+	}
 </script>
 
 <script lang="ts">
-	import { mockShipments } from '#lib/data/sections.js';
+	import { untrack } from 'svelte';
 
-	const sampleShipmentIds = Object.keys(mockShipments);
+	let { shipments }: Props = $props();
+
+	const sampleShipmentIds = $derived(Object.keys(shipments));
 	const inputId = $props.id();
+	// untrack: the first sample id is only the starting value of the input.
+	let shipmentIdInput = $state(untrack(() => Object.keys(shipments)[0]));
 
-	let shipmentIdInput = $state(sampleShipmentIds[0]);
+	// let shipmentIdInput = $state(sampleShipmentIds[0]);
 	let apiResponse = $state<ApiResponse | null>(null);
 	let isSending = $state(false);
 
@@ -34,7 +42,7 @@
 		isSending = true;
 		await new Promise((resolve) => setTimeout(resolve, latencyMs));
 
-		const shipment: MockShipment | undefined = mockShipments[shipmentId];
+		const shipment: MockShipment | undefined = shipments[shipmentId];
 
 		apiResponse = {
 			isSuccess: Boolean(shipment),

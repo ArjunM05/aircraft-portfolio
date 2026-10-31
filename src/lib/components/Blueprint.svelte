@@ -1,299 +1,41 @@
-<script lang="ts" module>
-	import type { AircraftPartId, CameraTarget } from '#lib/blueprint/types.js';
-
-	/** How a shape is drawn: normal outline, small decoration, or an invisible bigger click target. */
-	type ShapeRole = 'outline' | 'detail' | 'hit-area';
-
-	interface PartShape {
-		element: 'path' | 'rect' | 'circle';
-		attributes: Record<string, string | number>;
-		role: ShapeRole;
-		/** Also draw a flipped copy on the left side of the aircraft. */
-		mirrored?: boolean;
-	}
-
-	interface AircraftPartDefinition {
-		id: AircraftPartId;
-		displayName: string;
-		shapes: PartShape[];
-	}
-
-	/** The drawing is 400 x 640 units, nose pointing up, centred on x = 200. */
-	const VIEWBOX_WIDTH = 400;
-	const VIEWBOX_HEIGHT = 640;
-	// const AIRCRAFT_CENTER_X = VIEWBOX_WIDTH / 2;
-	// const VIEWBOX_CENTER_Y = VIEWBOX_HEIGHT / 2;
-
-	/** Camera easing: share of the remaining distance covered each frame. */
-	const CAMERA_SMOOTHING_PER_FRAME = 0.14;
-	const CAMERA_SETTLE_THRESHOLD = 0.05;
-	/** Zoom differences are small numbers, so they are weighted up when checking "are we there yet". */
-	const ZOOM_DISTANCE_WEIGHT = 50;
-
-	const cabinWindows: PartShape[] = [166, 178, 190, 202, 214, 226].flatMap((rowY) => [
-		{ element: 'rect', role: 'detail', attributes: { x: 191, y: rowY, width: 4, height: 5 } },
-		{ element: 'rect', role: 'detail', attributes: { x: 205, y: rowY, width: 4, height: 5 } }
-	]);
-
-	const avionicsPanels: PartShape[] = [84, 96, 108].map((panelY) => ({
-		element: 'rect',
-		role: 'detail',
-		attributes: { x: 192, y: panelY, width: 16, height: 3 }
-	}));
-
-	/**
-	 * Parts in drawing order: later parts are painted on top of earlier ones,
-	 * so the fuselage comes first and small overlays (cabin, cockpit, rudder) come last.
-	 */
-	const aircraftParts: AircraftPartDefinition[] = [
-		{
-			id: 'fuselage',
-			displayName: 'Fuselage',
-			shapes: [
-				{
-					element: 'path',
-					role: 'outline',
-					attributes: {
-						d: 'M200 12C214 12 220 50 220 100L220 450C220 500 208 580 200 600C192 580 180 500 180 450L180 100C180 50 186 12 200 12Z'
-					}
-				}
-			]
-		},
-		{
-			id: 'wings',
-			displayName: 'Wings',
-			shapes: [
-				{
-					element: 'path',
-					role: 'outline',
-					mirrored: true,
-					attributes: { d: 'M220 200L392 345L392 362L384 364L220 305Z' }
-				}
-			]
-		},
-		{
-			id: 'elevators',
-			displayName: 'Elevators',
-			shapes: [
-				{
-					element: 'path',
-					role: 'outline',
-					mirrored: true,
-					attributes: { d: 'M220 500L300 545L300 556L294 558L220 535Z' }
-				}
-			]
-		},
-		{
-			id: 'flaps',
-			displayName: 'Flaps',
-			shapes: [
-				{
-					element: 'path',
-					role: 'outline',
-					mirrored: true,
-					attributes: { d: 'M232 309L310 337L310 326L234 298Z' }
-				}
-			]
-		},
-		{
-			id: 'ailerons',
-			displayName: 'Ailerons',
-			shapes: [
-				{
-					element: 'path',
-					role: 'outline',
-					mirrored: true,
-					attributes: { d: 'M320 341L384 364L384 352L322 330Z' }
-				}
-			]
-		},
-		{
-			id: 'winglets',
-			displayName: 'Winglets',
-			shapes: [
-				{
-					element: 'rect',
-					role: 'hit-area',
-					mirrored: true,
-					attributes: { x: 383, y: 322, width: 17, height: 48 }
-				},
-				{
-					element: 'path',
-					role: 'outline',
-					mirrored: true,
-					attributes: { d: 'M388 347L397 329L399 335L392 362Z' }
-				}
-			]
-		},
-		{
-			id: 'engines',
-			displayName: 'Engines',
-			shapes: [
-				{
-					element: 'rect',
-					role: 'outline',
-					mirrored: true,
-					attributes: { x: 281, y: 262, width: 18, height: 44, rx: 9 }
-				}
-			]
-		},
-		{
-			id: 'cargo-hold',
-			displayName: 'Cargo hold',
-			shapes: [
-				{
-					element: 'rect',
-					role: 'outline',
-					attributes: { x: 187, y: 372, width: 26, height: 78, rx: 3, 'stroke-dasharray': '4 2' }
-				}
-			]
-		},
-		{
-			id: 'avionics-bay',
-			displayName: 'Avionics bay',
-			shapes: [
-				{
-					element: 'rect',
-					role: 'outline',
-					attributes: { x: 188, y: 72, width: 24, height: 78, rx: 3, 'stroke-dasharray': '2 2' }
-				},
-				...avionicsPanels
-			]
-		},
-		{
-			id: 'passenger-cabin',
-			displayName: 'Passenger cabin',
-			shapes: [
-				{
-					element: 'rect',
-					role: 'outline',
-					attributes: { x: 188, y: 158, width: 24, height: 80, rx: 3, 'stroke-dasharray': '2 2' }
-				},
-				...cabinWindows
-			]
-		},
-		{
-			id: 'black-box',
-			displayName: 'Black box',
-			shapes: [
-				{
-					element: 'rect',
-					role: 'outline',
-					attributes: { x: 190, y: 460, width: 20, height: 34, rx: 2 }
-				},
-				{ element: 'circle', role: 'detail', attributes: { cx: 200, cy: 477, r: 4 } }
-			]
-		},
-		{
-			id: 'cockpit',
-			displayName: 'Cockpit',
-			shapes: [
-				{
-					element: 'path',
-					role: 'outline',
-					attributes: { d: 'M200 12C208 12 213 25 215 50L185 50C187 25 192 12 200 12Z' }
-				},
-				{
-					element: 'path',
-					role: 'detail',
-					attributes: { d: 'M192 42L208 42L206 34L194 34Z' }
-				}
-			]
-		},
-		{
-			id: 'rudder',
-			displayName: 'Rudder',
-			shapes: [
-				{
-					element: 'rect',
-					role: 'hit-area',
-					attributes: { x: 188, y: 498, width: 24, height: 100 }
-				},
-				{
-					element: 'rect',
-					role: 'outline',
-					attributes: { x: 197, y: 500, width: 6, height: 82, rx: 3 }
-				}
-			]
-		}
-	];
-
-	/** Where each part's pulsing marker sits, in the 400 x 640 drawing. */
-	const partMarkerPositions: Record<AircraftPartId, { x: number; y: number }> = {
-		cockpit: { x: 200, y: 24 },
-		fuselage: { x: 200, y: 300 },
-		'avionics-bay': { x: 200, y: 111 },
-		'passenger-cabin': { x: 200, y: 198 },
-		engines: { x: 290, y: 284 },
-		wings: { x: 245, y: 255 },
-		flaps: { x: 272, y: 318 },
-		winglets: { x: 394, y: 340 },
-		ailerons: { x: 352, y: 347 },
-		'cargo-hold': { x: 200, y: 411 },
-		'black-box': { x: 200, y: 477 },
-		elevators: { x: 260, y: 530 },
-		rudder: { x: 200, y: 541 }
-	};
-
-	/** The middle of the aircraft in the drawing. Backdrops (such as the radar) are centred on it. */
-	interface AircraftCenter {
-		x: number;
-		y: number;
-	}
-
-	const AIRCRAFT_CENTER = { x: 200, y: 306 };
-
-	/* ---------- radar behind the aircraft ---------- */
-	const RADAR_RING_RADIUS = 330;
-	const RADAR_RING_INDEXES = [0, 1, 2];
-	const RADAR_SWEEP_RADIUS = 300;
-	const RADAR_SWEEP_SECONDS_PER_TURN = 10;
-	const RADAR_SWEEP_SLICE_COUNT = 6;
-	const RADAR_SWEEP_SLICE_DEGREES = 12;
-	const RADAR_SWEEP_LEADING_OPACITY = 0.14;
-
-	/** Angle 0 points straight up; angles grow clockwise. */
-	function radarPointAt(angleDegrees: number) {
-		const radians = (angleDegrees * Math.PI) / 180;
-		return {
-			x: AIRCRAFT_CENTER.x + RADAR_SWEEP_RADIUS * Math.sin(radians),
-			y: AIRCRAFT_CENTER.y - RADAR_SWEEP_RADIUS * Math.cos(radians)
-		};
-	}
-
-	function radarSlicePath(fromDegrees: number, toDegrees: number): string {
-		const start = radarPointAt(fromDegrees);
-		const end = radarPointAt(toDegrees);
-		return `M ${AIRCRAFT_CENTER.x} ${AIRCRAFT_CENTER.y} L ${start.x} ${start.y} A ${RADAR_SWEEP_RADIUS} ${RADAR_SWEEP_RADIUS} 0 0 1 ${end.x} ${end.y} Z`;
-	}
-
-	const radarSweepSlices = Array.from({ length: RADAR_SWEEP_SLICE_COUNT }, (_, index) => ({
-		path: radarSlicePath(
-			-(index + 1) * RADAR_SWEEP_SLICE_DEGREES,
-			-index * RADAR_SWEEP_SLICE_DEGREES
-		),
-		opacity: RADAR_SWEEP_LEADING_OPACITY * (1 - index / RADAR_SWEEP_SLICE_COUNT)
-	}));
-</script>
-
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
+	import { buildCameraTransform, viewFrameFor } from '#lib/blueprint/camera-math.js';
+	import {
+		AIRCRAFT_CENTER,
+		aircraftParts,
+		getPartDisplayName,
+		partMarkerPositions,
+		VIEWBOX_HEIGHT,
+		VIEWBOX_WIDTH,
+		type AircraftPartDefinition,
+		type BlueprintOrientation,
+		type PartShape
+	} from '#lib/blueprint/geometry.js';
+	import {
+		RADAR_RING_INDEXES,
+		RADAR_RING_RADIUS,
+		RADAR_SWEEP_SECONDS_PER_TURN,
+		radarSweepSlices
+	} from '#lib/blueprint/radar.js';
+	import { SmoothCamera } from '#lib/blueprint/smooth-camera.svelte.js';
+	import type { AircraftPartId, CameraTarget } from '#lib/blueprint/types.js';
 
 	interface Props {
 		/** The part that is currently highlighted. */
 		activePart: AircraftPartId;
-		/** Where the camera should end up. The component eases towards it. */
+		/** Where the camera should end up. The component glides towards it. */
 		camera: CameraTarget;
 		/** Called when a visitor clicks a part, or presses Enter/Space on it. */
 		onSelectPart: (part: AircraftPartId) => void;
-		/** 'horizontal' turns the aircraft sideways (nose on the left), filling the short, wide strip on phones. */
-		orientation?: 'vertical' | 'horizontal';
 		/** Parts that have a section behind them. The others are drawn but cannot be clicked. */
 		interactiveParts: AircraftPartId[];
 		/** Short caption per part, shown in the hover label (for example "Skills"). */
 		partCaptions: Partial<Record<AircraftPartId, string>>;
-		/** Optional drawing drawn behind the aircraft, centred on it. It pans and zooms with the camera. */
+		/** 'horizontal' turns the aircraft sideways, filling the short, wide strip on phones. */
+		orientation?: BlueprintOrientation;
+		/** Radar rings and sweep behind the aircraft. */
 		showRadar?: boolean;
 	}
 
@@ -309,66 +51,26 @@
 
 	const prefersReducedMotion = new MediaQuery('prefers-reduced-motion: reduce', false);
 
-	// Start exactly where the camera is told to be, so the first paint is already correct.
-	// untrack: we intentionally capture only the initial value here; the effect below follows changes.
-	let displayedCamera = $state<CameraTarget>(untrack(() => ({ ...camera })));
+	// untrack: only the first value is wanted here. The effect below follows later changes.
+	const smoothCamera = new SmoothCamera(untrack(() => camera));
+
+	$effect(() => {
+		const target = { ...camera };
+		// Returning moveTo's result cancels the running animation before the next one starts.
+		return smoothCamera.moveTo(target, { snap: prefersReducedMotion.current });
+	});
+
+	const viewFrame = $derived(viewFrameFor(orientation));
+	const cameraTransform = $derived(buildCameraTransform(smoothCamera.current, viewFrame));
 
 	let hoveredPart = $state<AircraftPartId | null>(null);
 
-	const hoverCaption = $derived.by(() => {
-		if (!hoveredPart) return '';
-		const partName = aircraftParts.find((part) => part.id === hoveredPart)?.displayName;
-		return `${partName}: ${partCaptions[hoveredPart] ?? ''}`;
-	});
-
-	/** Keeps markers about the same size on screen whatever the zoom is. */
-	const markerRadius = $derived(5 / displayedCamera.zoom);
-
-	const isHorizontal = $derived(orientation === 'horizontal');
-	const viewBoxWidth = $derived(isHorizontal ? VIEWBOX_HEIGHT : VIEWBOX_WIDTH);
-	const viewBoxHeight = $derived(isHorizontal ? VIEWBOX_WIDTH : VIEWBOX_HEIGHT);
-
-	// Move the view to the camera's centre, turn the aircraft if needed, then zoom.
-	const cameraTransform = $derived(
-		`translate(${viewBoxWidth / 2} ${viewBoxHeight / 2}) ` +
-			(isHorizontal ? 'rotate(-90) ' : '') +
-			`scale(${displayedCamera.zoom}) ` +
-			`translate(${-displayedCamera.centerX} ${-displayedCamera.centerY})`
+	const hoverCaption = $derived(
+		hoveredPart ? `${getPartDisplayName(hoveredPart)}: ${partCaptions[hoveredPart] ?? ''}` : ''
 	);
 
-	// Ease the displayed camera towards the requested one, one animation frame at a time.
-	$effect(() => {
-		const target = { ...camera };
-		const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-		const smoothing = prefersReducedMotion ? 1 : CAMERA_SMOOTHING_PER_FRAME;
-		let animationFrameId = 0;
-
-		function moveOneStepTowardsTarget() {
-			const nextCamera: CameraTarget = {
-				centerX: displayedCamera.centerX + (target.centerX - displayedCamera.centerX) * smoothing,
-				centerY: displayedCamera.centerY + (target.centerY - displayedCamera.centerY) * smoothing,
-				zoom: displayedCamera.zoom + (target.zoom - displayedCamera.zoom) * smoothing
-			};
-
-			const remainingDistance =
-				Math.abs(target.centerX - nextCamera.centerX) +
-				Math.abs(target.centerY - nextCamera.centerY) +
-				Math.abs(target.zoom - nextCamera.zoom) * ZOOM_DISTANCE_WEIGHT;
-
-			if (remainingDistance < CAMERA_SETTLE_THRESHOLD) {
-				displayedCamera = target;
-				return;
-			}
-
-			displayedCamera = nextCamera;
-			animationFrameId = requestAnimationFrame(moveOneStepTowardsTarget);
-		}
-
-		animationFrameId = requestAnimationFrame(moveOneStepTowardsTarget);
-
-		// Runs before the next effect run and on unmount, so two animations never fight each other.
-		return () => cancelAnimationFrame(animationFrameId);
-	});
+	/** Keeps markers about the same size on screen whatever the zoom is. */
+	const markerRadius = $derived(5 / smoothCamera.current.zoom);
 
 	function handlePartKeydown(event: KeyboardEvent, part: AircraftPartId) {
 		if (event.key === 'Enter' || event.key === ' ') {
@@ -381,11 +83,12 @@
 <div class="blueprint-frame">
 	<svg
 		class="blueprint"
-		viewBox="0 0 {viewBoxWidth} {viewBoxHeight}"
+		viewBox="0 0 {viewFrame.width} {viewFrame.height}"
 		preserveAspectRatio="xMidYMid meet"
 		role="group"
 		aria-label="Top-down blueprint of an Airbus A350-900. Each part opens a section."
 	>
+		<!-- These snippets live inside the <svg>, so Svelte knows their elements are SVG. -->
 		{#snippet shapeElement(shape: PartShape)}
 			{#if shape.element === 'path'}
 				<path class="shape shape--{shape.role}" {...shape.attributes} />
@@ -439,14 +142,15 @@
 
 		<g transform={cameraTransform}>
 			{#if showRadar}{@render radar()}{/if}
+
 			<path class="center-line" d="M200 0V640" />
 
 			{#each aircraftParts as part, partIndex (part.id)}
 				{#if interactiveParts.includes(part.id)}
 					<g
 						class="aircraft-part"
-						style:--part-index={partIndex}
 						class:active={part.id === activePart}
+						style:--part-index={partIndex}
 						role="button"
 						tabindex="0"
 						aria-label={part.displayName}
@@ -461,6 +165,7 @@
 						{@render partShapes(part)}
 					</g>
 				{:else}
+					<!-- Drawn so the aircraft keeps its full shape, but nothing happens when it is clicked. -->
 					<g class="aircraft-part inert" style:--part-index={partIndex} aria-hidden="true">
 						{@render partShapes(part)}
 					</g>
@@ -478,13 +183,22 @@
 			{/each}
 		</g>
 	</svg>
+
 	<div class="scan-line" aria-hidden="true"></div>
+
 	{#if hoverCaption}
 		<p class="part-caption" aria-hidden="true">{hoverCaption}</p>
 	{/if}
 </div>
 
 <style>
+	.blueprint-frame {
+		position: relative;
+		width: 100%;
+		height: 100%;
+		min-height: 0;
+	}
+
 	.blueprint {
 		display: block;
 		width: 100%;
@@ -510,6 +224,7 @@
 		transition:
 			fill 0.3s,
 			stroke 0.3s;
+		/* Each part fades in with a brief cyan outline, as if being drawn. */
 		animation: draft-in 0.7s ease-out backwards;
 		animation-delay: calc(var(--reveal-start, 0s) + var(--part-index, 0) * 90ms);
 	}
@@ -536,6 +251,13 @@
 		fill: rgba(95, 212, 255, 0.03);
 	}
 
+	@keyframes draft-in {
+		from {
+			opacity: 0;
+			stroke: var(--cyan);
+		}
+	}
+
 	/* Keep outlines the same thickness at every zoom level. */
 	.shape {
 		vector-effect: non-scaling-stroke;
@@ -549,13 +271,6 @@
 	.shape--hit-area {
 		fill: transparent;
 		stroke: none;
-	}
-
-	.blueprint-frame {
-		position: relative;
-		width: 100%;
-		height: 100%;
-		min-height: 0;
 	}
 
 	.part-caption {
@@ -573,8 +288,18 @@
 		pointer-events: none;
 	}
 
+	/* ---------- markers ---------- */
 	.hotspot {
 		pointer-events: none;
+		/* Markers appear once the drawing is done. */
+		animation: hotspot-in 0.5s ease-out backwards;
+		animation-delay: calc(var(--reveal-start, 0s) + 1.5s);
+	}
+
+	@keyframes hotspot-in {
+		from {
+			opacity: 0;
+		}
 	}
 
 	.hotspot-dot {
@@ -602,33 +327,7 @@
 		}
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.hotspot-pulse {
-			animation: none;
-			opacity: 0.5;
-		}
-	}
-
-	/* Each part fades in with a brief cyan outline, as if being drawn. */
-	@keyframes draft-in {
-		from {
-			opacity: 0;
-			stroke: var(--cyan);
-		}
-	}
-
-	/* Markers appear once the drawing is done. */
-	.hotspot {
-		animation: hotspot-in 0.5s ease-out backwards;
-		animation-delay: calc(var(--reveal-start, 0s) + 1.5s);
-	}
-
-	@keyframes hotspot-in {
-		from {
-			opacity: 0;
-		}
-	}
-
+	/* ---------- scan line ---------- */
 	/* A scan line sweeps from nose to tail while the drawing appears. */
 	.scan-line {
 		position: absolute;
@@ -659,6 +358,7 @@
 		}
 	}
 
+	/* ---------- radar ---------- */
 	.radar-slice {
 		fill: var(--cyan);
 	}
@@ -687,6 +387,11 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
+		.hotspot-pulse {
+			animation: none;
+			opacity: 0.5;
+		}
+
 		.radar-ring {
 			animation: none;
 			opacity: 0.1;

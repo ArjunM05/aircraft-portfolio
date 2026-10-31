@@ -7,6 +7,7 @@
 		animate = true
 	}: { target: number; durationMs?: number; animate?: boolean } = $props();
 
+	// svelte-ignore state_referenced_locally
 	let shownValue = $state(animate ? 0 : target);
 	let element = $state<HTMLElement>();
 

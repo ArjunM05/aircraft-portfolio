@@ -1,3 +1,4 @@
+import { mockShipments } from '../demo-data';
 import { githubUrl } from '../profile';
 import { veggieVisionTelemetryBars } from '../telemetry-presets';
 import type { BackendSection } from '../types';
@@ -96,7 +97,7 @@ export const backendSection: BackendSection = {
 						{ name: 'Serialize + respond', durationMs: 4 }
 					]
 				},
-				{ kind: 'api-playground' }
+				{ kind: 'api-playground', shipments: mockShipments }
 			]
 		},
 		{

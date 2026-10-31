@@ -48,6 +48,11 @@ export interface WorkEntry {
 	startsOpen?: boolean;
 }
 
+export interface FlightBoardRow {
+	shipmentId: string;
+	route: string;
+	initialStatus: string;
+}
 /* ---------- optional add-ons for a card ---------- */
 
 export interface TelemetryExtra {
@@ -69,10 +74,13 @@ export interface RequestPathExtra {
 
 export interface ApiPlaygroundExtra {
 	kind: 'api-playground';
+	shipments: Record<string, MockShipment>;
 }
 
 export interface FlightBoardExtra {
 	kind: 'flight-board';
+	rows: FlightBoardRow[];
+	statuses: string[];
 }
 
 /** Everything a card can show below its text. A card lists the ones it wants, in order. */

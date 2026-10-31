@@ -1,12 +1,21 @@
 <script lang="ts">
 	import '../app.css';
 	import FlightPath from '#lib/components/FlightPath.svelte';
-	import { profile, sections } from '#lib/data/sections.js';
-	import { provideNavigation } from '#lib/navigation-context.js';
-	import { providePortfolioState } from '#lib/portfolio-state.svelte.js';
 	import PreflightIntro from '#lib/components/PreflightIntro.svelte';
-
+	import {
+		provideMenuState,
+		provideSectionCursor,
+		provideSectionNavigator,
+		provideViewMode
+	} from '#lib/app-contexts.js';
+	import { profile, sections } from '#lib/data/sections.js';
 	import { isExtraAnimationOn } from '#lib/data/site-config.js';
+	import { provideNavigation } from '#lib/navigation-context.js';
+	import { scrollToPlainSection } from '#lib/navigation/plain-scroll.js';
+	import { SectionNavigator } from '#lib/navigation/section-navigator.js';
+	import { MenuState } from '#lib/state/menu-state.svelte.js';
+	import { SectionCursor } from '#lib/state/section-cursor.svelte.js';
+	import { ViewMode } from '#lib/state/view-mode.svelte.js';
 
 	const preflightIntroOn = isExtraAnimationOn('preflightIntro');
 	const draftingEffectOn = isExtraAnimationOn('draftingEffect');
@@ -14,10 +23,28 @@
 
 	let { children } = $props();
 
-	const portfolio = providePortfolioState();
+	// The layout is the one place that creates the shared state and wires it together.
+	const menu = provideMenuState(new MenuState());
+
+	const viewMode = provideViewMode(
+		new ViewMode(() => {
+			menu.close();
+			window.scrollTo(0, 0);
+		})
+	);
+
+	const cursor = provideSectionCursor(new SectionCursor());
+
+	const sectionNavigator = provideSectionNavigator(
+		new SectionNavigator({
+			isPlainView: () => viewMode.isPlainView,
+			scrollToPlainSection,
+			onNavigate: () => menu.close()
+		})
+	);
 
 	// Every "go to this section" chip in the page ends up here.
-	provideNavigation((sectionId) => portfolio.goToSection(sectionId));
+	provideNavigation((sectionId) => sectionNavigator.goTo(sectionId));
 
 	const waypoints = sections.map((section) => ({
 		id: section.id,
@@ -29,15 +56,15 @@
 	let burgerButton: HTMLButtonElement | undefined = $state();
 
 	function closeMenuOnEscape(event: KeyboardEvent) {
-		if (event.key === 'Escape' && portfolio.isMenuOpen) {
-			portfolio.closeMenu();
+		if (event.key === 'Escape' && menu.isOpen) {
+			menu.close();
 			burgerButton?.focus();
 		}
 	}
 
 	function closeMenuOnOutsideClick(event: MouseEvent) {
-		if (portfolio.isMenuOpen && !headerElement.contains(event.target as Node)) {
-			portfolio.closeMenu();
+		if (menu.isOpen && !headerElement.contains(event.target as Node)) {
+			menu.close();
 		}
 	}
 </script>
@@ -50,7 +77,7 @@
 
 <div
 	class="app-shell"
-	class:with-route-bar={!portfolio.isPlainView}
+	class:with-route-bar={!viewMode.isPlainView}
 	class:no-preflight={!preflightIntroOn}
 	class:no-drafting={!draftingEffectOn}
 	class:no-entrance={!introEntranceOn}
@@ -58,13 +85,13 @@
 	<a class="skip-link" href="#main-content">Skip to content</a>
 
 	<div class="site-chrome">
-		<header class="site-header" class:menu-open={portfolio.isMenuOpen} bind:this={headerElement}>
-			<button type="button" class="brand" onclick={() => portfolio.goToSection('intro')}>
+		<header class="site-header" class:menu-open={menu.isOpen} bind:this={headerElement}>
+			<button type="button" class="brand" onclick={() => sectionNavigator.goTo('intro')}>
 				<span class="brand-name">{profile.name}</span>
 				<span class="brand-tagline">/ A350-900 portfolio</span>
 			</button>
 
-			{#if portfolio.isPlainView}
+			{#if viewMode.isPlainView}
 				<nav id="section-menu" class="section-menu" aria-label="Flight plan">
 					<ul class="menu-list">
 						{#each sections as section (section.id)}
@@ -72,7 +99,7 @@
 								<button
 									type="button"
 									class="menu-item"
-									onclick={() => portfolio.goToSection(section.id)}
+									onclick={() => sectionNavigator.goTo(section.id)}
 								>
 									{section.menuLabel}
 								</button>
@@ -85,21 +112,21 @@
 			<button
 				type="button"
 				class="plain-view-toggle"
-				aria-pressed={portfolio.isPlainView}
-				onclick={() => portfolio.togglePlainView()}
+				aria-pressed={viewMode.isPlainView}
+				onclick={() => viewMode.toggle()}
 			>
-				{portfolio.isPlainView ? 'Blueprint view' : 'Plain view'}
+				{viewMode.isPlainView ? 'Blueprint view' : 'Plain view'}
 			</button>
 
-			{#if portfolio.isPlainView}
+			{#if viewMode.isPlainView}
 				<button
 					bind:this={burgerButton}
 					type="button"
 					class="burger"
-					aria-expanded={portfolio.isMenuOpen}
+					aria-expanded={menu.isOpen}
 					aria-controls="section-menu"
-					aria-label={portfolio.isMenuOpen ? 'Close flight plan' : 'Open flight plan'}
-					onclick={() => portfolio.toggleMenu()}
+					aria-label={menu.isOpen ? 'Close flight plan' : 'Open flight plan'}
+					onclick={() => menu.toggle()}
 				>
 					<span class="burger-bar"></span>
 					<span class="burger-bar"></span>
@@ -108,11 +135,11 @@
 			{/if}
 		</header>
 
-		{#if !portfolio.isPlainView}
+		{#if !viewMode.isPlainView}
 			<FlightPath
 				{waypoints}
-				activeIndex={portfolio.activeSectionIndex}
-				onSelectWaypoint={(sectionId) => portfolio.goToSection(sectionId)}
+				activeIndex={cursor.index}
+				onSelectWaypoint={(sectionId) => sectionNavigator.goTo(sectionId)}
 				departureCode="MAA"
 				arrivalCode="YOU"
 			/>

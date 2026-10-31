@@ -2,31 +2,30 @@
 	import { onMount, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { MediaQuery } from 'svelte/reactivity';
-	import Blueprint from '#lib/components/Blueprint.svelte';
-	import { isExtraAnimationOn } from '#lib/data/site-config.js';
-	import InstrumentCluster from '#lib/components/InstrumentCluster.svelte';
-	import SectionContent from '#lib/components/SectionContent.svelte';
+	import { useSectionCursor, useSectionNavigator, useViewMode } from '#lib/app-contexts.js';
+	import { analytics } from '#lib/analytics/analytics.js';
 	import { findSectionIdForPart, getBlueprintBinding } from '#lib/blueprint/section-bindings.js';
 	import type { AircraftPartId } from '#lib/blueprint/types.js';
-	import { getSectionIndex, profile, sections, type SectionId } from '#lib/data/sections.js';
-	import { usePortfolioState } from '#lib/portfolio-state.svelte.js';
-	import TourBar from '#lib/components/TourBar.svelte';
-	import { GuidedTour } from '#lib/guided-tour.svelte.js';
-	import { provideGuidedTour } from '#lib/guided-tour-context.js';
-	import CommandPalette from '#lib/components/CommandPalette.svelte';
-	import { visitPaths } from '#lib/data/hero.js';
-	import { PortfolioExplorer } from '#lib/explorer.svelte.js';
-	import { provideExplorer } from '#lib/explorer-context.js';
-	import { buildPaletteEntries } from '#lib/search/palette-entries.js';
-	import { analytics } from '#lib/analytics/analytics.js';
 	import { downloadFile, openInNewTab } from '#lib/browser-helpers.js';
+	import Blueprint from '#lib/components/Blueprint.svelte';
+	import CommandPalette from '#lib/components/CommandPalette.svelte';
+	import InstrumentCluster from '#lib/components/InstrumentCluster.svelte';
+	import SectionContent from '#lib/components/SectionContent.svelte';
 	import TerminalDialog from '#lib/components/TerminalDialog.svelte';
+	import TourBar from '#lib/components/TourBar.svelte';
+	import { visitPaths } from '#lib/data/hero.js';
+	import { getSectionIndex, profile, sections, type SectionId } from '#lib/data/sections.js';
+	import { isExtraAnimationOn } from '#lib/data/site-config.js';
+	import { provideExplorer } from '#lib/explorer-context.js';
+	import { PortfolioExplorer } from '#lib/explorer.svelte.js';
+	import { provideGuidedTour } from '#lib/guided-tour-context.js';
+	import { GuidedTour } from '#lib/guided-tour.svelte.js';
+	import { BlueprintScroller } from '#lib/navigation/blueprint-scroller.js';
+	import { SCROLL_DISTANCE_PER_SECTION_VH } from '#lib/navigation/scroll-geometry.js';
+	import { swipe, type SwipeDirection } from '#lib/navigation/swipe.js';
+	import { WheelForwarder } from '#lib/navigation/wheel-forwarder.js';
+	import { buildPaletteEntries } from '#lib/search/palette-entries.js';
 	import { buildTerminalCommands } from '#lib/terminal/commands.js';
-
-	/** How far the visitor scrolls (in screen heights, as a percentage) to move to the next section. */
-	const SCROLL_DISTANCE_PER_SECTION_VH = 45;
-	/** Minimum horizontal finger movement that counts as a swipe on phones. */
-	const SWIPE_DISTANCE_THRESHOLD_PX = 50;
 
 	/** What the visitor asked for. "balanced" lets the page switch between takeoff and cruise itself. */
 	type LayoutPreference = 'aircraft' | 'balanced' | 'reading';
@@ -43,39 +42,73 @@
 		{ value: 'reading', label: 'Reading', hint: 'Maximum room for content' }
 	];
 
-	const portfolio = usePortfolioState();
+	// Each of these is a small, separate piece of state created by the layout.
+	const viewMode = useViewMode();
+	const cursor = useSectionCursor();
+	const sectionNavigator = useSectionNavigator();
+
+	const goToSection = (sectionId: SectionId) => sectionNavigator.goTo(sectionId);
+
+	const isPhoneLayout = new MediaQuery('max-width: 820px', false);
+	const lastSectionIndex = sections.length - 1;
+
+	// ---------- scrolling and navigation ----------
+	const scroller = new BlueprintScroller({
+		cursor,
+		sectionCount: sections.length,
+		findSectionIndex: getSectionIndex,
+		isPlainView: () => viewMode.isPlainView,
+		isPhoneLayout: () => isPhoneLayout.current
+	});
+
+	// Tell the header, flight path and every "go to section" chip how this page navigates.
+	$effect(() => sectionNavigator.registerBlueprintNavigation((id) => scroller.goTo(id)));
+
+	// Keep the scroll position matching the active section when the layout type changes
+	// (resizing across the phone breakpoint) or when returning from plain view.
+	$effect(() => {
+		if (viewMode.isPlainView) return;
+		const isPhone = isPhoneLayout.current;
+
+		untrack(() => scroller.restoreScrollPosition(isPhone));
+	});
+
+	function goToAdjacentSection(direction: SwipeDirection) {
+		const adjacentSection = sections[cursor.index + direction];
+		if (adjacentSection) goToSection(adjacentSection.id);
+	}
+
+	function selectAircraftPart(part: AircraftPartId) {
+		const sectionId = findSectionIdForPart(
+			part,
+			sections.map((section) => section.id)
+		);
+		if (sectionId) goToSection(sectionId);
+	}
+
+	// Lets the content panel scroll on to the next section, like an ordinary page.
+	const wheelForwarder = new WheelForwarder({ isEnabled: () => !isPhoneLayout.current });
+
+	// ---------- guided tour and exploring ----------
+	const tour = provideGuidedTour(
+		new GuidedTour(goToSection, (sectionId) => getSectionIndex(sectionId) !== -1, {
+			started: (path) => analytics.track('tour_started', { path: path.id }),
+			finished: (path) => analytics.track('tour_finished', { path: path.id })
+		})
+	);
 
 	// The tour ends when the visitor wanders off its route or switches to plain view.
 	$effect(() => {
 		if (!tour.isActive) return;
-		if (portfolio.isPlainView || portfolio.activeSection.id !== tour.currentSectionId) {
+		if (viewMode.isPlainView || cursor.current.id !== tour.currentSectionId) {
 			tour.stop();
 		}
 	});
 
-	const tour = provideGuidedTour(
-		new GuidedTour(
-			(sectionId) => portfolio.goToSection(sectionId),
-			(sectionId) => getSectionIndex(sectionId) !== -1,
-			{
-				started: (path) => analytics.track('tour_started', { path: path.id }),
-				finished: (path) => analytics.track('tour_finished', { path: path.id })
-			}
-		)
-	);
-
 	const explorer = provideExplorer(new PortfolioExplorer());
 
+	// ---------- search palette and terminal ----------
 	let isPaletteOpen = $state(false);
-
-	/** In plain view the page is one long document, so jumping means scrolling to the section. */
-	function goToSectionFromPalette(sectionId: SectionId) {
-		if (portfolio.isPlainView) {
-			document.getElementById(`plain-${sectionId}`)?.scrollIntoView({ behavior: 'smooth' });
-			return;
-		}
-		portfolio.goToSection(sectionId);
-	}
 	let isTerminalOpen = $state(false);
 
 	function downloadResume(source: 'palette' | 'terminal') {
@@ -87,17 +120,17 @@
 		sections,
 		profile,
 		visitPaths,
-		goToSection: goToSectionFromPalette,
+		goToSection,
 		revealCard: (cardId, sectionId) => {
 			explorer.revealCard(cardId);
-			goToSectionFromPalette(sectionId);
+			goToSection(sectionId);
 		},
 		showSkill: (skill) => {
 			explorer.selectedSkill = skill;
-			goToSectionFromPalette('skills');
+			goToSection('skills');
 		},
 		startTour: (path) => tour.start(path),
-		togglePlainView: () => portfolio.togglePlainView(),
+		togglePlainView: () => viewMode.toggle(),
 		downloadResume: () => downloadResume('palette'),
 		openTerminal: () => (isTerminalOpen = true)
 	});
@@ -105,12 +138,13 @@
 	const terminalCommands = buildTerminalCommands({
 		profile,
 		sections,
-		flight: () => portfolio.flightStatus,
-		goToSection: goToSectionFromPalette,
+		flight: () => cursor.flightStatus,
+		goToSection,
 		downloadResume: () => downloadResume('terminal'),
 		openUrl: openInNewTab
 	});
 
+	// ---------- analytics ----------
 	onMount(() => {
 		// Lets CSS hide things that are only right once the real (phone or desktop) layout is known.
 		document.documentElement.dataset.hydrated = 'true';
@@ -120,8 +154,8 @@
 	// Report each section once per visit.
 	const viewedSectionIds = new Set<SectionId>();
 	$effect(() => {
-		const sectionId = portfolio.activeSection.id;
-		if (portfolio.isPlainView || viewedSectionIds.has(sectionId)) return;
+		const sectionId = cursor.current.id;
+		if (viewMode.isPlainView || viewedSectionIds.has(sectionId)) return;
 		viewedSectionIds.add(sectionId);
 		analytics.track('section_viewed', { section: sectionId });
 	});
@@ -134,15 +168,7 @@
 		if (isTerminalOpen) analytics.track('terminal_opened', {});
 	});
 
-	function chooseLayout(layout: LayoutPreference) {
-		layoutPreference = layout;
-		analytics.track('layout_changed', { layout });
-	}
-
-	const isPhoneLayout = new MediaQuery('max-width: 820px', false);
-
-	const lastSectionIndex = sections.length - 1;
-
+	// ---------- blueprint data ----------
 	/** Aircraft parts that have a visible section behind them. */
 	const interactiveParts = sections.map((section) => getBlueprintBinding(section.id).part);
 
@@ -151,124 +177,42 @@
 		sections.map((section) => [getBlueprintBinding(section.id).part, section.title])
 	) as Partial<Record<AircraftPartId, string>>;
 
-	const activeBinding = $derived(getBlueprintBinding(portfolio.activeSection.id));
+	const activeBinding = $derived(getBlueprintBinding(cursor.current.id));
 
+	// ---------- layout choice ----------
 	let layoutPreference = $state<LayoutPreference>('balanced');
 
 	const stageLayout = $derived<StageLayout>(
-		layoutPreference === 'balanced'
-			? portfolio.activeSectionIndex === 0
-				? 'takeoff'
-				: 'cruise'
-			: layoutPreference
+		layoutPreference === 'balanced' ? (cursor.index === 0 ? 'takeoff' : 'cruise') : layoutPreference
 	);
+
+	function chooseLayout(layout: LayoutPreference) {
+		layoutPreference = layout;
+		analytics.track('layout_changed', { layout });
+	}
 
 	/** Hide the hint once the visitor has moved off the first section. */
 	let hasExplored = $state(false);
 	$effect(() => {
-		if (portfolio.activeSectionIndex !== 0) hasExplored = true;
+		if (cursor.index !== 0) hasExplored = true;
 	});
-
-	let swipeStartX: number | null = null;
-
-	function scrollDistancePerSection(): number {
-		return (window.innerHeight * SCROLL_DISTANCE_PER_SECTION_VH) / 100;
-	}
-
-	/** Scroll position (in pixels) that lands in the middle of a section's scroll range. */
-	function scrollPositionForSection(sectionIndex: number): number {
-		return sectionIndex === 0 ? 0 : sectionIndex * scrollDistancePerSection() + 2;
-	}
-
-	function updateActiveSectionFromScroll() {
-		if (isPhoneLayout.current || portfolio.isPlainView) return;
-
-		const nearestSection = Math.round(window.scrollY / scrollDistancePerSection());
-		portfolio.activeSectionIndex = Math.min(lastSectionIndex, Math.max(0, nearestSection));
-	}
-
-	// Tell the header, flight path and every "go to section" chip how this page navigates.
-	$effect(() =>
-		portfolio.registerNavigator((sectionId: SectionId) => {
-			const sectionIndex = getSectionIndex(sectionId);
-			if (sectionIndex === -1) return;
-
-			portfolio.activeSectionIndex = sectionIndex;
-			if (!isPhoneLayout.current) {
-				window.scrollTo({ top: scrollPositionForSection(sectionIndex), behavior: 'auto' });
-			}
-		})
-	);
-
-	// Keep the scroll position matching the active section when the layout type changes
-	// (resizing across the phone breakpoint) or when returning from plain view.
-	$effect(() => {
-		if (portfolio.isPlainView) return;
-		const isPhone = isPhoneLayout.current;
-
-		untrack(() => {
-			window.scrollTo({
-				top: isPhone ? 0 : scrollPositionForSection(portfolio.activeSectionIndex),
-				behavior: 'auto'
-			});
-		});
-	});
-
-	function selectAircraftPart(part: AircraftPartId) {
-		const sectionId = findSectionIdForPart(
-			part,
-			sections.map((section) => section.id)
-		);
-		if (sectionId) portfolio.goToSection(sectionId);
-	}
-
-	function goToAdjacentSection(direction: 1 | -1) {
-		const adjacentSection = sections[portfolio.activeSectionIndex + direction];
-		if (adjacentSection) portfolio.goToSection(adjacentSection.id);
-	}
-
-	function handleSwipeStart(event: TouchEvent) {
-		swipeStartX = event.touches[0].clientX;
-	}
-
-	function handleSwipeEnd(event: TouchEvent) {
-		if (swipeStartX === null || !isPhoneLayout.current) return;
-
-		const horizontalMovement = event.changedTouches[0].clientX - swipeStartX;
-		swipeStartX = null;
-
-		if (Math.abs(horizontalMovement) >= SWIPE_DISTANCE_THRESHOLD_PX) {
-			// Swiping left moves forward, like turning a page.
-			goToAdjacentSection(horizontalMovement < 0 ? 1 : -1);
-		}
-	}
-
-	/** Svelte action: listens for finger swipes on an element (phones only, see handleSwipeEnd). */
-	function listenForSwipes(element: HTMLElement) {
-		element.addEventListener('touchstart', handleSwipeStart, { passive: true });
-		element.addEventListener('touchend', handleSwipeEnd, { passive: true });
-
-		return {
-			destroy() {
-				element.removeEventListener('touchstart', handleSwipeStart);
-				element.removeEventListener('touchend', handleSwipeEnd);
-			}
-		};
-	}
 </script>
 
 <svelte:head>
 	<title>{profile.name} | {profile.jobTitle}</title>
 </svelte:head>
 
-<svelte:window onscroll={updateActiveSectionFromScroll} onresize={updateActiveSectionFromScroll} />
+<svelte:window
+	onscroll={() => scroller.syncFromScroll()}
+	onresize={() => scroller.syncFromScroll()}
+/>
 
 <h1 class="visually-hidden">{profile.name}, {profile.jobTitle}</h1>
 <p class="visually-hidden" aria-live="polite">
-	{portfolio.isPlainView ? 'Showing plain view' : `Showing ${portfolio.activeSection.title}`}
+	{viewMode.isPlainView ? 'Showing plain view' : `Showing ${cursor.current.title}`}
 </p>
 
-{#if portfolio.isPlainView}
+{#if viewMode.isPlainView}
 	<div class="plain-view">
 		{#each sections as section (section.id)}
 			<section class="plain-section" id="plain-{section.id}">
@@ -282,7 +226,10 @@
 		style:--scroll-extra="{lastSectionIndex * SCROLL_DISTANCE_PER_SECTION_VH}vh"
 	>
 		<div class="stage" data-layout={stageLayout}>
-			<div class="blueprint-area" use:listenForSwipes>
+			<div
+				class="blueprint-area"
+				use:swipe={{ enabled: isPhoneLayout.current, onSwipe: goToAdjacentSection }}
+			>
 				<Blueprint
 					activePart={activeBinding.part}
 					camera={activeBinding.camera}
@@ -332,10 +279,10 @@
 
 				<TourBar />
 
-				{#key portfolio.activeSection.id}
-					<div class="panel-scroll" in:fade={{ duration: 180 }}>
+				{#key cursor.current.id}
+					<div class="panel-scroll" in:fade={{ duration: 180 }} use:wheelForwarder.attach>
 						<div class="panel-inner">
-							<SectionContent section={portfolio.activeSection} />
+							<SectionContent section={cursor.current} />
 						</div>
 					</div>
 				{/key}
@@ -345,18 +292,18 @@
 						type="button"
 						class="step-button"
 						onclick={() => goToAdjacentSection(-1)}
-						disabled={portfolio.activeSectionIndex === 0}
+						disabled={cursor.index === 0}
 					>
 						&lsaquo; Prev
 					</button>
 					<span class="step-counter">
-						Waypoint {portfolio.activeSectionIndex + 1} / {sections.length}
+						Waypoint {cursor.index + 1} / {sections.length}
 					</span>
 					<button
 						type="button"
 						class="step-button"
 						onclick={() => goToAdjacentSection(1)}
-						disabled={portfolio.activeSectionIndex === lastSectionIndex}
+						disabled={cursor.index === lastSectionIndex}
 					>
 						Next &rsaquo;
 					</button>
@@ -365,13 +312,13 @@
 
 			<div class="instrument-panel" aria-hidden="true">
 				<InstrumentCluster
-					altitudeFeet={portfolio.flightStatus.altitudeFeet}
-					headingDegrees={portfolio.flightStatus.headingDegrees}
-					phase={portfolio.flightStatus.phase}
+					altitudeFeet={cursor.flightStatus.altitudeFeet}
+					headingDegrees={cursor.flightStatus.headingDegrees}
+					phase={cursor.flightStatus.phase}
 				/>
 				<div class="title-block">
 					DWG <strong>A350-900 / ARJUN-M</strong><br />
-					WAYPOINT <strong>{portfolio.activeSectionIndex + 1}/{sections.length}</strong> &nbsp; REV
+					WAYPOINT <strong>{cursor.index + 1}/{sections.length}</strong> &nbsp; REV
 					<strong>A</strong>
 				</div>
 			</div>
@@ -513,7 +460,7 @@
 		padding: 22px clamp(16px, 3vw, 36px);
 		overflow-y: auto;
 		/* Scrolling inside the panel never scrolls the page behind it. */
-		overscroll-behavior: contain;
+		/* overscroll-behavior: contain; */
 	}
 
 	/* Keeps lines readable when the panel is very wide (Reading layout). */

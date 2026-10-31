@@ -1,3 +1,4 @@
+import { flightBoardRows, flightBoardStatuses } from '../demo-data';
 import { githubUrl } from '../profile';
 import type { FrontendSection } from '../types';
 
@@ -31,7 +32,7 @@ export const frontendSection: FrontendSection = {
 			technologies: ['Angular', 'TypeScript'],
 			disciplines: ['backend'],
 			isSample: false,
-			extras: [{ kind: 'flight-board' }],
+			extras: [{ kind: 'flight-board', rows: flightBoardRows, statuses: flightBoardStatuses }],
 			startsOpen: true
 		},
 		{

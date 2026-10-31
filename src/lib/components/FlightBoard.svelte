@@ -6,10 +6,19 @@
 
 <script lang="ts">
 	import { fly } from 'svelte/transition';
-	import { flightBoardRows, flightBoardStatuses } from '#lib/data/sections.js';
+	import { untrack } from 'svelte';
+	import type { FlightBoardRow } from '#lib/data/types.js';
 
+	interface Props {
+		rows: FlightBoardRow[];
+		statuses: string[];
+	}
+
+	let { rows, statuses }: Props = $props();
+
+	// untrack: the board starts from the first rows and then changes on its own.
 	let boardRows = $state(
-		flightBoardRows.map((row) => ({
+		untrack(() => rows).map((row) => ({
 			shipmentId: row.shipmentId,
 			route: row.route,
 			status: row.initialStatus
@@ -17,7 +26,7 @@
 	);
 
 	function pickDifferentStatus(currentStatus: string): string {
-		const otherStatuses = flightBoardStatuses.filter((status) => status !== currentStatus);
+		const otherStatuses = statuses.filter((status) => status !== currentStatus);
 		return otherStatuses[Math.floor(Math.random() * otherStatuses.length)];
 	}
 

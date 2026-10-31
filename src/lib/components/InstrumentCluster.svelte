@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	import type { FlightPhase } from '#lib/portfolio-state.svelte.js';
+	import type { FlightPhase } from '#lib/flight/flight-status.js';
 
 	const ALTIMETER_MAX_FEET = 40_000;
 	const DIAL_START_DEGREES = -135;

@@ -1,6 +1,5 @@
 <script lang="ts" module>
 	import type { ContactSection } from '#lib/data/sections.js';
-	import { analytics } from '#lib/analytics/analytics.js';
 
 	export type BoardingPassDetails = ContactSection['boardingPass'];
 	export type FallbackLink = ContactSection['profileLinks'][number];
@@ -8,115 +7,30 @@
 
 	type SubmissionState = 'idle' | 'sending' | SubmissionResult;
 
-	const WEB3FORMS_ENDPOINT = 'https://api.web3forms.com/submit';
-	const REQUEST_TIMEOUT_MS = 10_000;
 	const COPY_FEEDBACK_DURATION_MS = 4000;
-	const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
-	const SUBJECT_PREFIX = '[Portfolio]';
-
-	interface TicketFormValues {
-		passengerName: string;
-		passengerEmail: string;
-		inquiryType: string;
-		message: string;
-	}
-
-	type ValidatedField = 'passengerName' | 'passengerEmail' | 'message';
-	type FieldErrors = Partial<Record<ValidatedField, string>>;
-
-	function validateTicketForm(values: TicketFormValues): FieldErrors {
-		const errors: FieldErrors = {};
-
-		if (!values.passengerName.trim()) {
-			errors.passengerName = 'Please add your name.';
-		}
-		if (!EMAIL_PATTERN.test(values.passengerEmail.trim())) {
-			errors.passengerEmail = 'Please add a valid email address so I can reply.';
-		}
-		if (!values.message.trim()) {
-			errors.message = 'Please write a short message.';
-		}
-
-		return errors;
-	}
-
-	function buildSubject(values: TicketFormValues): string {
-		return `${SUBJECT_PREFIX} ${values.inquiryType} - ${values.passengerName.trim()}`;
-	}
-
-	function buildMessageBody(values: TicketFormValues): string {
-		return (
-			`${values.message.trim()}\n\n--\n` +
-			`${values.passengerName.trim()}\n${values.passengerEmail.trim()}`
-		);
-	}
-
-	function buildMailtoUrl(recipientEmail: string, values: TicketFormValues): string {
-		return (
-			`mailto:${recipientEmail}` +
-			`?subject=${encodeURIComponent(buildSubject(values))}` +
-			`&body=${encodeURIComponent(buildMessageBody(values))}`
-		);
-	}
-
-	/** Posts the ticket to Web3Forms. Resolves to true only when the service confirms delivery. */
-	async function sendToWeb3Forms(accessKey: string, values: TicketFormValues): Promise<boolean> {
-		const abortController = new AbortController();
-		const timeoutId = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
-
-		try {
-			const response = await fetch(WEB3FORMS_ENDPOINT, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-				body: JSON.stringify({
-					access_key: accessKey,
-					subject: buildSubject(values),
-					from_name: 'Portfolio contact form',
-					// Web3Forms uses "email" as the reply-to address.
-					name: values.passengerName.trim(),
-					email: values.passengerEmail.trim(),
-					inquiry_type: values.inquiryType,
-					message: values.message.trim()
-				}),
-				signal: abortController.signal
-			});
-
-			analytics.track('message_sent', { method: 'web3forms' });
-
-			const result = await response.json();
-			return response.ok && result.success === true;
-		} catch {
-			// Offline, timed out, blocked, or an unreadable reply: all count as "not delivered".
-			return false;
-		} finally {
-			clearTimeout(timeoutId);
-		}
-	}
 </script>
 
 <script lang="ts">
 	import { tick, untrack } from 'svelte';
+	import { analytics } from '#lib/analytics/analytics.js';
+	import { buildCopyableMessage, buildMailtoUrl } from '#lib/contact/message-builder.js';
+	import type { MessageSender, TicketFormValues } from '#lib/contact/types.js';
+	import { validateTicketForm, type FieldErrors } from '#lib/contact/validation.js';
 
 	interface Props {
 		/** Ticket wording and fixed details (airline name, gate, seat and so on). */
 		details: BoardingPassDetails;
 		/** Your address. Used for the fallback options. */
 		recipientEmail: string;
-		/** Web3Forms access key. When missing, the form goes straight to the fallback options. */
-		accessKey?: string;
+		/** Delivers the message. When missing, the form goes straight to the fallback options. */
+		sender?: MessageSender;
 		/** Extra ways to reach you if automatic delivery fails (LinkedIn, GitHub and so on). */
 		fallbackLinks?: FallbackLink[];
 		/** Called after every delivery attempt. Handy for testing. */
 		onSubmissionResult?: (result: SubmissionResult) => void;
 	}
 
-	let {
-		details,
-		recipientEmail,
-		accessKey,
-		fallbackLinks = [],
-		onSubmissionResult
-	}: Props = $props();
+	let { details, recipientEmail, sender, fallbackLinks = [], onSubmissionResult }: Props = $props();
 
 	// Unique prefix, so two passes on one page (for example plain view) never share element ids.
 	const fieldIdPrefix = $props.id();
@@ -143,9 +57,7 @@
 	const isFailed = $derived(submissionState === 'failed');
 
 	const mailtoUrl = $derived(buildMailtoUrl(recipientEmail, values));
-	const copyableMessage = $derived(
-		`To: ${recipientEmail}\nSubject: ${buildSubject(values)}\n\n${buildMessageBody(values)}`
-	);
+	const copyableMessage = $derived(buildCopyableMessage(recipientEmail, values));
 
 	$effect(() => () => clearTimeout(copyFeedbackTimer));
 
@@ -168,14 +80,20 @@
 			return;
 		}
 
-		if (!accessKey) {
+		if (!sender) {
 			submissionState = 'failed';
 			onSubmissionResult?.('failed');
 			return;
 		}
 
 		submissionState = 'sending';
-		const wasDelivered = await sendToWeb3Forms(accessKey, values);
+		// A plain copy, so edits made while sending cannot change what is delivered.
+		const wasDelivered = await sender.send($state.snapshot(values));
+
+		if (wasDelivered) {
+			analytics.track('message_sent', { method: sender.id });
+		}
+
 		submissionState = wasDelivered ? 'sent' : 'failed';
 		onSubmissionResult?.(submissionState);
 	}
@@ -185,19 +103,30 @@
 		submissionState = 'idle';
 	}
 
-	async function copyToClipboard(text: string, successMessage: string) {
+	async function copyToClipboard(text: string, successMessage: string): Promise<boolean> {
 		clearTimeout(copyFeedbackTimer);
 
+		let wasCopied = false;
 		try {
 			await navigator.clipboard.writeText(text);
 			copyFeedback = successMessage;
-
-			analytics.track('message_sent', { method: 'fallback' });
+			wasCopied = true;
 		} catch {
 			copyFeedback = 'Your browser blocked copying. Select the text and copy it manually.';
 		}
 
 		copyFeedbackTimer = setTimeout(() => (copyFeedback = ''), COPY_FEEDBACK_DURATION_MS);
+		return wasCopied;
+	}
+
+	async function copyMessage() {
+		if (await copyToClipboard(copyableMessage, 'Message copied.')) {
+			analytics.track('message_sent', { method: 'fallback' });
+		}
+	}
+
+	function copyEmailAddress() {
+		void copyToClipboard(recipientEmail, 'Email address copied.');
 	}
 </script>
 
@@ -342,7 +271,7 @@
 	{#if isFailed}
 		<div class="fallback-panel" role="alert">
 			<p class="fallback-title">
-				{accessKey
+				{sender
 					? 'The ticket could not be delivered automatically.'
 					: 'Automatic delivery is not set up on this site.'}
 				Your message is safe here. Use any option below:
@@ -358,16 +287,9 @@
 				onfocus={(event) => event.currentTarget.select()}></textarea>
 
 			<div class="fallback-actions">
-				<button type="button" onclick={() => copyToClipboard(copyableMessage, 'Message copied.')}>
-					Copy message
-				</button>
+				<button type="button" onclick={copyMessage}> Copy message </button>
 				<a href={mailtoUrl}>Open in mail app</a>
-				<button
-					type="button"
-					onclick={() => copyToClipboard(recipientEmail, 'Email address copied.')}
-				>
-					Copy my email
-				</button>
+				<button type="button" onclick={copyEmailAddress}> Copy my email </button>
 				{#each fallbackLinks as link (link.url)}
 					<a href={link.url} target="_blank" rel="noopener noreferrer">{link.label}</a>
 				{/each}

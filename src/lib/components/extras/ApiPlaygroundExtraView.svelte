@@ -4,9 +4,9 @@
 	import type { ApiPlaygroundExtra } from '#lib/data/types.js';
 	import type { ExtraViewProps } from './extra-view-props.js';
 
-	let { expandAll = false }: ExtraViewProps<ApiPlaygroundExtra> = $props();
+	let { extra, expandAll = false }: ExtraViewProps<ApiPlaygroundExtra> = $props();
 </script>
 
 <Accordion title="Try the API" subtitle="Mock shipment tracker" startsOpen={expandAll}>
-	<ApiPlayground />
+	<ApiPlayground shipments={extra.shipments} />
 </Accordion>

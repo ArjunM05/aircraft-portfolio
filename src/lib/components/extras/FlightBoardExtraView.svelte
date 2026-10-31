@@ -4,7 +4,7 @@
 	import type { ExtraViewProps } from './extra-view-props.js';
 
 	// The board is shown directly in the card, not inside an accordion.
-	let {}: ExtraViewProps<FlightBoardExtra> = $props();
+	let { extra }: ExtraViewProps<FlightBoardExtra> = $props();
 </script>
 
-<FlightBoard />
+<FlightBoard rows={extra.rows} statuses={extra.statuses} />
