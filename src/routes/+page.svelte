@@ -252,9 +252,14 @@
 
 			<article class="detail-panel" aria-label="Section details">
 				<div class="panel-toolbar">
-					<button type="button" class="search-button" onclick={() => (isPaletteOpen = true)}>
-						Search <kbd>Ctrl K</kbd>
-					</button>
+					<div class="toolbar-actions">
+						<button type="button" class="search-button" onclick={() => (isPaletteOpen = true)}>
+							Search <kbd>Ctrl K</kbd>
+						</button>
+						<button type="button" class="search-button" onclick={() => (isTerminalOpen = true)}>
+							Terminal <kbd>`</kbd>
+						</button>
+					</div>
 
 					<div
 						class="layout-group"
@@ -420,6 +425,11 @@
 		gap: 4px;
 		padding: 6px 10px;
 		border-bottom: 1px solid var(--grid);
+	}
+
+	.toolbar-actions {
+		display: flex;
+		gap: 6px;
 	}
 
 	.toolbar-label {

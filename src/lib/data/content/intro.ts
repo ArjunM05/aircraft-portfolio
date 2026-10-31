@@ -18,7 +18,7 @@ export const introSection: IntroSection = {
 	// 	{ percent: 98, displayValue: '98%', label: 'Detection accuracy' }
 	// ],
 	biography: [
-		'I am a Computer Science Engineering graduate specializing in full-stack web development and machine learning. I enjoy architecting robust backend microservices, optimizing database performance, and bridging the gap between complex AI models and seamless user interfaces.',
+		'I am a Computer Science Engineering graduate specializing in full-stack web development and machine learning. I enjoy architecting robust backend microservices, optimizing database performance, and bridging the gap between complex backend systems and seamless user interfaces.',
 		'I am an aspiring pilot and I love everything about aviation, so this portfolio is drawn as an Airbus A350-900.'
 	],
 	exploreLinks: [

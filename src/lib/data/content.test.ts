@@ -47,4 +47,18 @@ describe('portfolio content', () => {
 
 		expect(withoutTechnologies).toEqual([]);
 	});
+
+	it('uses secure links for certificates', () => {
+		const urls = sections.flatMap((section) =>
+			section.kind === 'certifications'
+				? section.certifications.flatMap((certification) =>
+						certification.url ? [certification.url] : []
+					)
+				: []
+		);
+
+		for (const url of urls) {
+			expect(url.startsWith('https://')).toBe(true);
+		}
+	});
 });

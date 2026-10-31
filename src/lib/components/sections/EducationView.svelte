@@ -37,9 +37,9 @@
 		border-left: 2px solid var(--grid);
 	}
 
-	.education-entry:first-child {
+	/* .education-entry:first-child {
 		border-left-color: var(--amber);
-	}
+	} */
 
 	.education-entry h3 {
 		margin-top: 12px;

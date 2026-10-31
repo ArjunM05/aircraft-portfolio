@@ -9,7 +9,7 @@ export const projectsSection: ProjectsSection = {
 	aircraftPartName: 'Cargo hold',
 	partExplanation:
 		'The cargo hold carries the payload an aircraft exists to deliver. These are things I delivered.',
-	hasSampleContent: true,
+	hasSampleContent: false,
 	githubUrl,
 	projects: [
 		// {
@@ -49,7 +49,6 @@ export const projectsSection: ProjectsSection = {
 			technologies: ['Python', 'PyTorch', 'Random Forest', 'Deep Learning'],
 			disciplines: ['ai-ml'],
 			isSample: false,
-			sourceCodeUrl: githubUrl,
 			startsOpen: true
 		},
 		{

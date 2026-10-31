@@ -48,9 +48,15 @@
 		if (outputElement) outputElement.scrollTop = outputElement.scrollHeight;
 	});
 
+	function isTerminalShortcut(event: KeyboardEvent): boolean {
+		if (event.ctrlKey || event.metaKey || event.altKey) return false;
+		// `code` is the physical key. It still matches on layouts where the backtick is a
+		// "dead key" or needs Shift, and `key` still covers layouts that put it elsewhere.
+		return event.code === 'Backquote' || event.key === '`';
+	}
+
 	function handleGlobalKeydown(event: KeyboardEvent) {
-		const hasModifier = event.ctrlKey || event.metaKey || event.altKey;
-		if (event.key === '`' && !hasModifier && !open && !isTypingTarget(event.target)) {
+		if (isTerminalShortcut(event) && !open && !isTypingTarget(event.target)) {
 			event.preventDefault();
 			open = true;
 		}

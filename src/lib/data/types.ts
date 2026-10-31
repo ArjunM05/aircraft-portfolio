@@ -53,6 +53,15 @@ export interface FlightBoardRow {
 	route: string;
 	initialStatus: string;
 }
+
+export interface Certification {
+	name: string;
+	/** Who issued it, for example "Udemy" or "NPTEL". */
+	issuer?: string;
+	/** Link to the certificate or its verification page. Leave it out when there isn't one. */
+	url?: string;
+}
+
 /* ---------- optional add-ons for a card ---------- */
 
 export interface TelemetryExtra {
@@ -226,7 +235,7 @@ export interface ProjectsSection extends SectionBase {
 
 export interface CertificationsSection extends SectionBase {
 	kind: 'certifications';
-	certifications: string[];
+	certifications: Certification[];
 }
 
 export interface EducationEntry {

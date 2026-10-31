@@ -20,13 +20,12 @@ export const hero = {
 	/** Set to null to hide the availability chip. */
 	availability: 'Open to full-stack roles' as string | null,
 	headline: 'Full-stack developer who ships dependable products.',
-	techHighlights: ['TypeScript', 'Angular', 'Svelte', 'C# / ASP.NET', 'PostgreSQL', 'Python'],
-	/** SAMPLE numbers: replace with your real ones, then set statsAreSample to false. */
-	statsAreSample: true,
+	techHighlights: ['C# / ASP.NET', 'Angular', 'PostgreSQL', 'Python', 'AI/ML'],
+	statsAreSample: false,
 	stats: [
 		{ value: 2, suffix: '+', label: 'years building software' },
-		{ value: 6, suffix: '', label: 'projects built end to end' },
-		{ value: 3, suffix: '', label: 'disciplines: frontend, backend, AI/ML' }
+		{ value: 6, suffix: '', label: 'projects built end to end' }
+		// { value: 3, suffix: '', label: 'disciplines: frontend, backend, AI/ML' }
 	] satisfies HeroStat[]
 };
 
